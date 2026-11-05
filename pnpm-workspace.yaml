@@ -1,0 +1,8 @@
+# `tsc` is TypeScript 7 (native, fast typecheck). Tools that need the
+# JavaScript compiler API (ESLint, tsdown) get TypeScript 6 through the
+# `typescript` alias and the override below.
+overrides:
+  typescript: npm:@typescript/typescript6@^6.0.2
+
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "planeward.schema.json",
+  "title": "Planeward app manifest",
+  "description": "planeward.json: how `planeward dev` runs and emulates a Planeward community app.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "slug", "experiencePath", "scopes", "dev"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "Display name shown in the emulator host."
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,47}$",
+      "description": "Lowercase slug; the local app id is `<slug>-local`."
+    },
+    "experiencePath": {
+      "type": "string",
+      "pattern": "^/",
+      "description": "Path on dev.url rendered in the Experience view."
+    },
+    "dashboardPath": {
+      "type": "string",
+      "pattern": "^/",
+      "description": "Path on dev.url rendered in the Dashboard view (admins)."
+    },
+    "webhookPath": {
+      "type": "string",
+      "pattern": "^/",
+      "description": "Path on dev.url that receives signed webhooks."
+    },
+    "scopes": {
+      "type": "array",
+      "uniqueItems": true,
+      "description": "Scopes the emulator grants the app.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "COMMUNITY_MEMBERS_READ",
+          "COMMUNITY_MESSAGES_READ",
+          "COMMUNITY_MESSAGES_WRITE",
+          "COURSES_READ",
+          "COURSE_PROGRESS_WRITE",
+          "EVENTS_READ",
+          "EVENT_REGISTRATIONS_WRITE",
+          "FORMS_SUBMIT",
+          "COMMUNITY_BADGES_WRITE"
+        ]
+      }
+    },
+    "dev": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "url"],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Shell command that starts the app, e.g. `next dev --port 3005`."
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https?://",
+          "description": "Origin the app serves on, e.g. `http://localhost:3005`."
+        }
+      }
+    }
+  }
+}
