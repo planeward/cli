@@ -6,7 +6,6 @@ settings:
 
 overrides:
   typescript: npm:@typescript/typescript6@^6.0.2
-  '@planeward/sdk': link:../sdk
 
 importers:
 
@@ -16,8 +15,8 @@ importers:
         specifier: ^2.1.6
         version: 2.1.6(hono@4.13.16)
       '@planeward/sdk':
-        specifier: link:../sdk
-        version: link:../sdk
+        specifier: ^0.2.1
+        version: 0.2.1
       hono:
         specifier: ^4.13.16
         version: 4.13.16
@@ -439,6 +438,10 @@ packages:
 
   '@oxc-project/types@0.156.0':
     resolution: {integrity: sha512-1Duyg48TdJNdyhEB8Xn1L36bT9Pv6GUtlKjHxOys8xkaF/rQq3XJE+bAurSK/AgIz5mGFsb77cn9Pb20+WCScw==}
+
+  '@planeward/sdk@0.2.1':
+    resolution: {integrity: sha512-foUHEcRe2QrRFGCdBKQdPVXTna3sF+8+r8M0v7jDoNchRPz36VYw4Ytm0eTZglbF70SxbpJQm1183SyuPXN+oQ==}
+    engines: {node: '>=24'}
 
   '@quansync/fs@1.1.0':
     resolution: {integrity: sha512-qAPG/t3HqML1TlN7sY/pTbEjzFVAKsMjNNMGheyDosro+kT4iw2KCUoHcVdmliwWjorm4elZbgNQyU2eD97eDg==}
@@ -1956,6 +1959,10 @@ snapshots:
   '@keyv/serialize@1.1.1': {}
 
   '@oxc-project/types@0.156.0': {}
+
+  '@planeward/sdk@0.2.1':
+    dependencies:
+      jose: 6.2.15
 
   '@quansync/fs@1.1.0':
     dependencies:
