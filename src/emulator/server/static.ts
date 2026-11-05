@@ -1,8 +1,10 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
-import { dirname, extname, join, resolve, sep } from "node:path";
+import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Context } from "hono";
+
+import { packageRoot } from "../../commands/package-info";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -20,27 +22,6 @@ const MIME_TYPES: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
-/** The `planeward` package root, found by walking up from this module. */
-function packageRoot(): string | null {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (;;) {
-    const manifest = join(dir, "package.json");
-    if (existsSync(manifest)) {
-      try {
-        const { name } = JSON.parse(readFileSync(manifest, "utf8")) as {
-          name?: string;
-        };
-        if (name === "planeward") return dir;
-      } catch {
-        // Keep walking.
-      }
-    }
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-}
-
 /**
  * The prebuilt host UI: `dist/ui` next to the bundled `dist/bin.js`, or the
  * package's `dist/ui` when running from source.
@@ -48,8 +29,7 @@ function packageRoot(): string | null {
 export function defaultUiDir(): string {
   const bundled = fileURLToPath(new URL("./ui/", import.meta.url));
   if (existsSync(join(bundled, "index.html"))) return bundled;
-  const root = packageRoot();
-  return root ? join(root, "dist", "ui") : bundled;
+  return join(packageRoot(), "dist", "ui");
 }
 
 const PLACEHOLDER_HTML = `<!doctype html>

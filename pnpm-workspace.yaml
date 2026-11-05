@@ -1,8 +1,13 @@
 # `tsc` is TypeScript 7 (native, fast typecheck). Tools that need the
 # JavaScript compiler API (ESLint, tsdown) get TypeScript 6 through the
 # `typescript` alias and the override below.
+#
+# `@planeward/sdk` links the sibling checkout (`../sdk`) until 0.2.0 is on
+# npm. package.json keeps `^0.2.0`, which is what gets published. Once the
+# sdk is published, delete this override and run `pnpm install`.
 overrides:
   typescript: npm:@typescript/typescript6@^6.0.2
+  "@planeward/sdk": link:../sdk
 
 allowBuilds:
   esbuild: true

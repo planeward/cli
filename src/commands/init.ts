@@ -1,7 +1,7 @@
 /** `planeward init`: writes `planeward.json` for an existing app. */
 import { existsSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 
 import { MANIFEST_FILE_NAME, type PlanewardManifest } from "../manifest";
@@ -9,7 +9,7 @@ import { parseCommandArgs, rejectPositionals } from "./args";
 import { CliError } from "./errors";
 import { gitignoreWarning, validateManifest } from "./manifest-file";
 import { createOutput, type Output } from "./output";
-import { manifestSchemaFile } from "./package-info";
+import { manifestSchemaUrl } from "./package-info";
 
 export type InitOptions = { yes: boolean; help: boolean };
 
@@ -64,20 +64,6 @@ export function portFromScript(script: string): number | null {
   return port > 0 && port <= 65_535 ? port : null;
 }
 
-/**
- * `$schema` value: relative to the app folder (POSIX separators) when both
- * share a folder below the top level (e.g. `~/workspaces/planeward`),
- * otherwise the absolute path of the linked install.
- */
-export function schemaRef(dir: string, schemaFile = manifestSchemaFile()) {
-  const rel = relative(dir, schemaFile);
-  if (!rel || isAbsolute(rel)) return schemaFile;
-  const ups = rel.split(sep).filter((part) => part === "..").length;
-  const depth = resolve(dir).split(sep).filter(Boolean).length;
-  if (depth - ups < 2) return schemaFile;
-  return rel.split(sep).join("/");
-}
-
 export type InferredManifest = {
   manifest: PlanewardManifest;
   /** Assumptions worth telling the user about. */
@@ -86,7 +72,7 @@ export type InferredManifest = {
 
 export function inferManifest(
   dir: string,
-  schemaFile = manifestSchemaFile()
+  schemaUrl = manifestSchemaUrl()
 ): InferredManifest {
   const notes: string[] = [];
   const pkg = readPackageJson(dir);
@@ -128,7 +114,7 @@ export function inferManifest(
 
   return {
     manifest: {
-      $schema: schemaRef(dir, schemaFile),
+      $schema: schemaUrl,
       name,
       slug,
       experiencePath: "/experience",
@@ -167,7 +153,7 @@ export async function runInit(
     cwd?: string;
     output?: Output;
     confirm?: (question: string) => Promise<boolean>;
-    schemaFile?: string;
+    schemaUrl?: string;
   } = {}
 ): Promise<number> {
   const cwd = deps.cwd ?? process.cwd();
@@ -179,7 +165,7 @@ export async function runInit(
     );
   }
 
-  const { manifest, notes } = inferManifest(cwd, deps.schemaFile);
+  const { manifest, notes } = inferManifest(cwd, deps.schemaUrl);
   const check = validateManifest(manifest);
   if (!check.ok) {
     throw new CliError(

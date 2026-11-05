@@ -1,12 +1,12 @@
 /**
  * Test-only: validates mock API responses against the Planeward OpenAPI spec
- * (`apps/docs/openapi/v1.yaml`) with Ajv. The spec is `openapi: 3.1.0` but
- * uses 3.0-style `nullable: true`; that is rewritten to `type: [T, "null"]`
- * before compiling. Set `PLANEWARD_OPENAPI` to point at another copy.
+ * with Ajv. The spec is vendored at `fixtures/openapi.yaml` (refresh it with
+ * `pnpm update-openapi`). It is `openapi: 3.1.0` but uses 3.0-style
+ * `nullable: true`; that is rewritten to `type: [T, "null"]` before
+ * compiling. Set `PLANEWARD_OPENAPI` to a file path to test another copy.
  */
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import addFormats from "ajv-formats";
 import {
   Ajv2020,
@@ -15,9 +15,8 @@ import {
 } from "ajv/dist/2020.js";
 import { parse } from "yaml";
 
-export const DEFAULT_OPENAPI_PATH = join(
-  homedir(),
-  "workspaces/workbench/apps/docs/openapi/v1.yaml"
+export const DEFAULT_OPENAPI_PATH = fileURLToPath(
+  new URL("../../../fixtures/openapi.yaml", import.meta.url)
 );
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -147,7 +146,7 @@ export function loadOpenApiValidator(
           )
           .join("; ");
         throw new Error(
-          `${method} ${path} ${status} does not match v1.yaml: ${errors}\n${JSON.stringify(body, null, 2).slice(0, 2000)}`
+          `${method} ${path} ${status} does not match the OpenAPI spec: ${errors}\n${JSON.stringify(body, null, 2).slice(0, 2000)}`
         );
       }
     },

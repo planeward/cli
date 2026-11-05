@@ -1,11 +1,27 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "planeward",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Local-only Planeward app CLI: `planeward dev` runs an emulator of the Planeward host, API and webhooks.",
-  "license": "UNLICENSED",
+  "version": "0.1.0",
+  "description": "Local CLI for building Planeward community apps: `planeward dev` runs an emulator of the Planeward host, API and webhooks.",
+  "license": "MIT",
   "type": "module",
+  "homepage": "https://github.com/planeward/cli#readme",
+  "bugs": {
+    "url": "https://github.com/planeward/cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/planeward/cli.git"
+  },
+  "keywords": [
+    "planeward",
+    "cli",
+    "emulator",
+    "community",
+    "apps",
+    "webhooks",
+    "sdk"
+  ],
   "bin": {
     "planeward": "./dist/bin.js"
   },
@@ -16,10 +32,16 @@
   "exports": {
     "./schema/planeward.schema.json": "./schema/planeward.schema.json"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown && pnpm build:ui",
     "build:ui": "vite build --config src/emulator/ui/vite.config.ts",
     "dev:ui": "vite --config src/emulator/ui/vite.config.ts",
+    "update-openapi": "node scripts/update-openapi.mjs",
+    "prepublishOnly": "pnpm build",
+    "release": "bumpp --commit \"chore(release): v%s\" --no-push",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/emulator/ui",
     "lint": "eslint .",
     "test": "tsx --test --test-timeout=30000 'src/**/*.test.ts'",
@@ -28,7 +50,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",
-    "@planeward/sdk": "link:../sdk",
+    "@planeward/sdk": "^0.2.0",
     "hono": "^4.13.16",
     "jose": "^6.2.15",
     "open": "^11.0.4",
@@ -46,6 +68,7 @@
     "@vitejs/plugin-react": "^6.2.1",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
+    "bumpp": "^12.3.0",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.1.1",

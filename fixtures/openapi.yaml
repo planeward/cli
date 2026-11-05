@@ -1,0 +1,6510 @@
+openapi: 3.1.0
+info:
+  title: Planeward API
+  version: 1.0.0
+  description: >-
+    Workspace-scoped public REST API. Authenticate with `x-api-key` or
+    `Authorization: Bearer`. A 403 for a missing scope carries `missingScope`,
+    the permission key the caller needs (see `ForbiddenError`). Each key or app
+    installation is rate limited before the scope check, so every call counts;
+    over the limit returns 429 `{ "error": "Too many API requests. Try again
+    shortly." }` with `Retry-After` and `X-RateLimit-*` headers. An app whose
+    URLs are still localhost answers 403 `{ "error": "This app is in local
+    development and only works in its own workspace." }` when called for an
+    installation outside its publisher's workspace.
+servers:
+  - url: "{origin}/api/v1"
+    variables:
+      origin:
+        # Overridden at load from NEXT_PUBLIC_WEB_URL when that env is set.
+        default: http://localhost:3000
+security:
+  - ApiKeyHeader: []
+  - BearerAuth: []
+tags:
+  - name: Projects
+    description: Workspace projects
+  - name: Tasks
+    description: Tasks inside a project
+  - name: Customers
+    description: CRM customers
+  - name: Contacts
+    description: CRM contacts (people)
+  - name: Sequences
+    description: Follow-up sequences. A contact can have one open SALES enrollment and one open CLIENT enrollment. Higher priority replaces lower in the same lane.
+  - name: Jobs
+    description: Background bulk jobs (attendance import, sales import, sequence bulk pause/stop). Contacts read scope.
+  - name: Events
+    description: Webinars and live sessions with registrations and attendance. Replaces webinar-* and att-* tags.
+  - name: Forms
+    description: CRM intake forms
+  - name: Pipelines
+    description: CRM pipelines and stages
+  - name: Opportunities
+    description: Pipeline deals
+  - name: Invoices
+    description: CRM invoices
+  - name: Payments
+    description: CRM payments and completed purchases from any checkout
+  - name: Meta
+    description: Meta Purchase conversion log, retry, and offline CSV export. Payments read/write scopes.
+  - name: Chats
+    description: Channels and messages
+  - name: Sites
+    description: Published sites, pages, and CMS collections. Sites read/write scopes; needs the Sites app and a plan with Sites.
+  - name: Embed
+    description: Mint embed sessions and list a host-site user's projects
+  - name: Community
+    description: >
+      Community members, channels, messages, courses, progress and badges.
+      Called by community apps with their `pwa_` secret plus the
+      `x-planeward-installation` header; scopes are the ones the installer
+      granted. Endpoints that act for a member take `memberId` (the community
+      membership id).
+paths:
+  /projects:
+    get:
+      tags: [Projects]
+      summary: List projects
+      operationId: listProjects
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200":
+          $ref: "#/components/responses/ProjectList"
+    post:
+      tags: [Projects]
+      summary: Create a project
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/ProjectItem"
+  /projects/{projectId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Projects]
+      summary: Get a project
+      operationId: getProject
+      responses:
+        "200":
+          $ref: "#/components/responses/ProjectItem"
+    patch:
+      tags: [Projects]
+      summary: Update a project
+      operationId: updateProject
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectWrite"
+      responses:
+        "200":
+          $ref: "#/components/responses/ProjectItem"
+    delete:
+      tags: [Projects]
+      summary: Soft-delete a project
+      operationId: deleteProject
+      responses:
+        "200":
+          $ref: "#/components/responses/ProjectItem"
+  /projects/{projectId}/labels:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Tasks]
+      summary: List labels in a project
+      operationId: listProjectLabels
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200":
+          $ref: "#/components/responses/ProjectLabelList"
+  /projects/{projectId}/tasks:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Tasks]
+      summary: List tasks in a project
+      operationId: listProjectTasks
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+        - name: parentId
+          in: query
+          required: false
+          description: Only return subtasks of this task.
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/TaskList"
+    post:
+      tags: [Tasks]
+      summary: Create a task
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/TaskItem"
+  /tasks/{taskId}:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    get:
+      tags: [Tasks]
+      summary: Get a task
+      operationId: getTask
+      responses:
+        "200":
+          $ref: "#/components/responses/TaskItem"
+    patch:
+      tags: [Tasks]
+      summary: Update a task
+      operationId: updateTask
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskWrite"
+      responses:
+        "200":
+          $ref: "#/components/responses/TaskItem"
+    delete:
+      tags: [Tasks]
+      summary: Delete a task
+      operationId: deleteTask
+      responses:
+        "200":
+          $ref: "#/components/responses/TaskItem"
+  /customers:
+    get:
+      tags: [Customers]
+      summary: List customers
+      operationId: listCustomers
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200":
+          $ref: "#/components/responses/CustomerList"
+    post:
+      tags: [Customers]
+      summary: Create a customer
+      operationId: createCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/CustomerItem"
+  /customers/{customerId}:
+    parameters:
+      - $ref: "#/components/parameters/CustomerId"
+    get:
+      tags: [Customers]
+      summary: Get a customer
+      operationId: getCustomer
+      responses:
+        "200":
+          $ref: "#/components/responses/CustomerItem"
+    patch:
+      tags: [Customers]
+      summary: Update a customer
+      operationId: updateCustomer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerWrite"
+      responses:
+        "200":
+          $ref: "#/components/responses/CustomerItem"
+    delete:
+      tags: [Customers]
+      summary: Delete a customer
+      operationId: deleteCustomer
+      responses:
+        "200":
+          $ref: "#/components/responses/CustomerItem"
+  /contacts:
+    get:
+      tags: [Contacts]
+      summary: List contacts
+      operationId: listContacts
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+        - name: customerId
+          in: query
+          schema:
+            type: string
+        - name: unlinkedOnly
+          in: query
+          schema:
+            type: boolean
+        - name: firstTouchSource
+          in: query
+          schema:
+            $ref: "#/components/schemas/ContactSource"
+      responses:
+        "200":
+          $ref: "#/components/responses/ContactList"
+    post:
+      tags: [Contacts]
+      summary: Create a contact
+      operationId: createContact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/ContactItem"
+  /contacts/{contactId}:
+    parameters:
+      - $ref: "#/components/parameters/ContactId"
+    get:
+      tags: [Contacts]
+      summary: Get a contact
+      operationId: getContact
+      responses:
+        "200":
+          $ref: "#/components/responses/ContactItem"
+    patch:
+      tags: [Contacts]
+      summary: Update a contact
+      operationId: updateContact
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactPatch"
+      responses:
+        "200":
+          $ref: "#/components/responses/ContactItem"
+    delete:
+      tags: [Contacts]
+      summary: Soft-delete a contact
+      operationId: deleteContact
+      responses:
+        "200":
+          $ref: "#/components/responses/ContactItem"
+  /contacts/{contactId}/sequence:
+    parameters:
+      - $ref: "#/components/parameters/ContactId"
+    get:
+      tags: [Sequences]
+      summary: Get a contact's sequence state
+      description: >-
+        Open enrollments by lane (`open.SALES`, `open.CLIENT`) and recent ended
+        enrollments. Deprecated SALES-shaped fields (`status`, `sequenceId`,
+        `sequenceKey`, `currentStep`, `enrollment`) stay at the top level for one
+        release. `lane` selects which lane fills those deprecated fields
+        (default SALES).
+      operationId: getContactSequence
+      parameters:
+        - name: lane
+          in: query
+          schema:
+            $ref: "#/components/schemas/SequenceLane"
+          description: Lane for the deprecated top-level fields. Defaults to SALES.
+      responses:
+        "200":
+          description: Sequence state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ContactSequenceState"
+  /contacts/{contactId}/sequence/enroll:
+    parameters:
+      - $ref: "#/components/parameters/ContactId"
+    post:
+      tags: [Sequences]
+      summary: Enroll a contact in a sequence
+      description: >-
+        A higher-priority sequence replaces the open enrollment in the same lane
+        (which stops with OUTRANKED). Equal or lower priority leaves the open one
+        in place. Contacts under 18 without guardian consent are refused. A contact
+        can be in one SALES and one CLIENT sequence at the same time.
+      operationId: enrollContactSequence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SequenceEnroll"
+      responses:
+        "200":
+          description: Enrollment result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [result, enrollment]
+                    properties:
+                      result:
+                        type: string
+                        enum:
+                          [
+                            enrolled,
+                            already_enrolled,
+                            outranked,
+                            replaced,
+                            blocked_minor,
+                          ]
+                      enrollment:
+                        nullable: true
+                        allOf:
+                          - $ref: "#/components/schemas/SequenceEnrollment"
+  /contacts/{contactId}/sequence/stop:
+    parameters:
+      - $ref: "#/components/parameters/ContactId"
+    post:
+      tags: [Sequences]
+      summary: Stop a contact's open sequence
+      description: Optional sequenceId only stops that sequence; otherwise lane (default SALES).
+      operationId: stopContactSequence
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SequenceStop"
+      responses:
+        "200":
+          description: Whether an enrollment was stopped
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [stopped, enrollment]
+                    properties:
+                      stopped:
+                        type: boolean
+                      enrollment:
+                        nullable: true
+                        allOf:
+                          - $ref: "#/components/schemas/SequenceEnrollment"
+  /contacts/{contactId}/sequence/pause:
+    parameters:
+      - $ref: "#/components/parameters/ContactId"
+    post:
+      tags: [Sequences]
+      summary: Pause a contact's active sequence for a human
+      description: >-
+        A paused enrollment still blocks lower-priority sequences in the same
+        lane. Optional sequenceId or lane (default SALES).
+      operationId: pauseContactSequence
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SequenceLaneBody"
+      responses:
+        "200":
+          description: Whether an enrollment was paused
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [paused, enrollment]
+                    properties:
+                      paused:
+                        type: boolean
+                      enrollment:
+                        nullable: true
+                        allOf:
+                          - $ref: "#/components/schemas/SequenceEnrollment"
+  /contacts/{contactId}/sequence/resume:
+    parameters:
+      - $ref: "#/components/parameters/ContactId"
+    post:
+      tags: [Sequences]
+      summary: Resume a contact's paused sequence
+      description: Optional sequenceId or lane (default SALES).
+      operationId: resumeContactSequence
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SequenceLaneBody"
+      responses:
+        "200":
+          description: Whether an enrollment was resumed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [resumed, enrollment]
+                    properties:
+                      resumed:
+                        type: boolean
+                      enrollment:
+                        nullable: true
+                        allOf:
+                          - $ref: "#/components/schemas/SequenceEnrollment"
+  /sequences:
+    get:
+      tags: [Sequences]
+      summary: List sequences
+      operationId: listSequences
+      parameters:
+        - name: includeArchived
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Sequences, highest priority first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Sequence"
+    post:
+      tags: [Sequences]
+      summary: Create a sequence
+      operationId: createSequence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SequenceWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/SequenceItem"
+  /sequences/{sequenceId}:
+    parameters:
+      - $ref: "#/components/parameters/SequenceId"
+    get:
+      tags: [Sequences]
+      summary: Get a sequence
+      operationId: getSequence
+      responses:
+        "200":
+          $ref: "#/components/responses/SequenceItem"
+    patch:
+      tags: [Sequences]
+      summary: Update a sequence
+      description: Set `archived` to stop new enrollments; open ones keep running.
+      operationId: updateSequence
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/SequenceWrite"
+                - type: object
+                  properties:
+                    archived:
+                      type: boolean
+      responses:
+        "200":
+          $ref: "#/components/responses/SequenceItem"
+  /sequences/{sequenceId}/stats:
+    parameters:
+      - $ref: "#/components/parameters/SequenceId"
+    get:
+      tags: [Sequences]
+      summary: Sequence stats
+      description: Open counts plus completed/stopped in the window (default 30 days).
+      operationId: getSequenceStats
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 30
+      responses:
+        "200":
+          description: Sequence stats
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/SequenceStats"
+  /sequences/{sequenceId}/enrollments:
+    parameters:
+      - $ref: "#/components/parameters/SequenceId"
+    get:
+      tags: [Sequences]
+      summary: List sequence enrollments
+      operationId: listSequenceEnrollments
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, PAUSED, STOPPED, COMPLETED]
+        - name: stopReason
+          in: query
+          schema:
+            $ref: "#/components/schemas/SequenceStopReason"
+        - name: pausedBy
+          in: query
+          schema:
+            type: string
+          description: Membership id that paused the enrollment.
+        - name: endedSince
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Enrollments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SequenceEnrollment"
+                  meta:
+                    $ref: "#/components/schemas/ListMeta"
+  /sequences/{sequenceId}/archive:
+    parameters:
+      - $ref: "#/components/parameters/SequenceId"
+    post:
+      tags: [Sequences]
+      summary: Archive a sequence
+      description: Archived sequences take no new enrollments; open ones keep running.
+      operationId: archiveSequence
+      responses:
+        "200":
+          $ref: "#/components/responses/SequenceItem"
+  /sequences/{sequenceId}/enrollments/bulk-stop:
+    parameters:
+      - $ref: "#/components/parameters/SequenceId"
+    post:
+      tags: [Sequences]
+      summary: Bulk-stop enrollments
+      description: >-
+        Body is enrollmentIds or a filter, plus reason (default MANUAL). More than
+        200 matching rows returns `{ jobId }` instead of `{ stopped }`.
+      operationId: bulkStopSequenceEnrollments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SequenceEnrollmentBulk"
+      responses:
+        "200":
+          description: Stopped count or a bulk job
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      stopped:
+                        type: integer
+                      jobId:
+                        type: string
+  /sequences/{sequenceId}/enrollments/bulk-pause:
+    parameters:
+      - $ref: "#/components/parameters/SequenceId"
+    post:
+      tags: [Sequences]
+      summary: Bulk-pause enrollments
+      description: >-
+        Body is enrollmentIds or a filter. More than 200 matching active rows
+        returns `{ jobId }` instead of `{ paused }`.
+      operationId: bulkPauseSequenceEnrollments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SequenceEnrollmentBulk"
+      responses:
+        "200":
+          description: Paused count or a bulk job
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      paused:
+                        type: integer
+                      jobId:
+                        type: string
+  /jobs/{jobId}:
+    parameters:
+      - $ref: "#/components/parameters/JobId"
+    get:
+      tags: [Jobs]
+      summary: Get a bulk job
+      description: Poll until status is SUCCEEDED, FAILED, or CANCELLED. Jobs are workspace-scoped.
+      operationId: getBulkJob
+      responses:
+        "200":
+          $ref: "#/components/responses/BulkJobItem"
+  /events:
+    get:
+      tags: [Events]
+      summary: List events
+      description: >
+        Requires `EVENTS_READ` (`CONTACTS_READ` or `CONTACTS_WRITE` also work).
+        Newest first, with a registration count per event. App callers only see
+        events with `showInCommunity` on, without the CRM pipeline, and with
+        `formId` / `form` only for a published form shown in community (see
+        `Event`).
+      operationId: listEvents
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Events
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Event"
+                  meta:
+                    $ref: "#/components/schemas/ListMeta"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Events]
+      summary: Create an event
+      operationId: createEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/EventItem"
+        "400":
+          $ref: "#/components/responses/InvalidWriteBody"
+  /events/{eventId}:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+    get:
+      tags: [Events]
+      summary: Get an event
+      description: >
+        Requires `EVENTS_READ` (`CONTACTS_READ` or `CONTACTS_WRITE` also work).
+        Includes `counts` by attendance. For app callers an event without
+        `showInCommunity` is 404 "Event not shown in community.", and the
+        response leaves out the CRM pipeline and any form apps can't see (see
+        `Event`).
+      operationId: getEvent
+      responses:
+        "200":
+          $ref: "#/components/responses/EventItem"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Event not found, or not shown in community
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [Events]
+      summary: Update an event
+      operationId: updateEvent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventWrite"
+      responses:
+        "200":
+          $ref: "#/components/responses/EventItem"
+        "400":
+          $ref: "#/components/responses/InvalidWriteBody"
+    delete:
+      tags: [Events]
+      summary: Delete an event
+      description: Deletes its registrations. Contacts and deals stay.
+      operationId: deleteEvent
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      deleted:
+                        type: boolean
+  /events/{eventId}/registrations:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+    get:
+      tags: [Events]
+      summary: List registrations
+      operationId: listEventRegistrations
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+        - name: attendance
+          in: query
+          schema:
+            $ref: "#/components/schemas/AttendanceStatus"
+      responses:
+        "200":
+          description: Registrations, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EventRegistration"
+                  meta:
+                    $ref: "#/components/schemas/ListMeta"
+    post:
+      tags: [Events]
+      summary: Register a member or contact
+      description: >-
+        Requires `EVENT_REGISTRATIONS_WRITE` (`CONTACTS_WRITE` also works).
+        Send `memberId` (required for app callers) or `contactId`. Safe to
+        repeat. Returns 201 with `created: true` for a new registration, 200
+        with `created: false` when already registered. When the event has a
+        pipeline, a new registration opens a deal in its first open stage. App
+        callers can only register for events with `showInCommunity` on, and
+        their response leaves out `contact` and `opportunityId`. A member
+        without a primary contact gets one: their customer's contact with the
+        customer's own email if there is one, else a new contact from the
+        customer record. Another contact of the customer is never made
+        primary, and the customer record is not changed.
+      operationId: registerEventContact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventRegistrationWrite"
+      responses:
+        "200":
+          $ref: "#/components/responses/EventRegistrationResult"
+        "201":
+          $ref: "#/components/responses/EventRegistrationResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Event, member or contact not found, or event not shown in community
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          $ref: "#/components/responses/MemberContactConflict"
+    delete:
+      tags: [Events]
+      summary: Cancel a member's or contact's registration
+      description: >-
+        Requires `EVENT_REGISTRATIONS_WRITE` (`CONTACTS_WRITE` also works).
+        Pass exactly one of `memberId` (required for app callers) or
+        `contactId`. Safe to repeat: `cancelled` is false when there was no
+        registration. Emits `event.registration_cancelled`. The contact and
+        any deal stay.
+      operationId: cancelEventRegistration
+      parameters:
+        - name: memberId
+          in: query
+          schema:
+            type: string
+        - name: contactId
+          in: query
+          description: Workspace API keys only.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [eventId, contactId, cancelled]
+                    properties:
+                      eventId:
+                        type: string
+                      contactId:
+                        type: string
+                        nullable: true
+                        description: Null when a member had no contact yet.
+                      cancelled:
+                        type: boolean
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Event or member not found, or event not shown in community
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /events/{eventId}/registrations/{contactId}:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+      - $ref: "#/components/parameters/ContactId"
+    get:
+      tags: [Events]
+      summary: Get a contact's registration
+      description: 404 when the contact is not registered.
+      operationId: getEventRegistration
+      responses:
+        "200":
+          $ref: "#/components/responses/EventRegistrationItem"
+    patch:
+      tags: [Events]
+      summary: Update a registration
+      description: >-
+        Patch attendance, join/leave times, or the linked opportunity. Pass null
+        on opportunityId to unlink. Contact and opportunity records stay.
+        Changing attendance emits event.attendance_classified.
+      operationId: updateEventRegistration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventRegistrationPatch"
+      responses:
+        "200":
+          $ref: "#/components/responses/EventRegistrationItem"
+        "400":
+          $ref: "#/components/responses/InvalidWriteBody"
+    delete:
+      tags: [Events]
+      summary: Unregister a contact
+      description: The contact and opportunity stay.
+      operationId: deleteEventRegistration
+      responses:
+        "200":
+          $ref: "#/components/responses/EventRegistrationItem"
+  /events/{eventId}/attendance:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+    put:
+      tags: [Events]
+      summary: Set one registrant's attendance
+      description: >-
+        Requires `EVENT_REGISTRATIONS_WRITE` (`CONTACTS_WRITE` also works).
+        Send `memberId` (required for app callers) or `contactId`. The
+        registrant must be registered. Changing attendance emits
+        `event.attendance_classified`. App callers can only use events with
+        `showInCommunity` on, and their response leaves out `contact` and
+        `opportunityId`.
+      operationId: setEventAttendance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventAttendanceSet"
+      responses:
+        "200":
+          $ref: "#/components/responses/EventRegistrationItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Event, member or registration not found, or event not shown in community
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [Events]
+      summary: Import attendance
+      description: >-
+        Rows match registrants by email. An explicit `status` wins; otherwise
+        no `joinedAt` is NO_SHOW, leaving before the event's `offerStartsAt` is
+        LEFT_EARLY, and anything else is ATTENDED. Registrants with no row get
+        `missing`. More than 200 rows returns `{ jobId }` — poll
+        `GET /jobs/{jobId}`.
+      operationId: importEventAttendance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rows]
+              properties:
+                missing:
+                  type: string
+                  enum: [NO_SHOW, UNCLASSIFIED]
+                  default: NO_SHOW
+                rows:
+                  type: array
+                  maxItems: 20000
+                  items:
+                    type: object
+                    required: [email]
+                    properties:
+                      email:
+                        type: string
+                      status:
+                        type: string
+                        nullable: true
+                        description: ATTENDED, LEFT_EARLY, NO_SHOW, or UNCLASSIFIED (aliases like "no show" work).
+                      joinedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      leftAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+      responses:
+        "200":
+          description: Counts after the import
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      jobId:
+                        type: string
+                        description: Present when the import runs in the background (> 200 rows).
+                      counts:
+                        $ref: "#/components/schemas/EventAttendanceCounts"
+                      unmatchedEmails:
+                        type: array
+                        description: Emails in the rows that did not register.
+                        items:
+                          type: string
+        "400":
+          $ref: "#/components/responses/InvalidWriteBody"
+  /forms:
+    get:
+      tags: [Forms]
+      summary: List forms
+      description: >
+        Requires `FORMS_READ` or `FORMS_SUBMIT` (`FORMS_WRITE` covers both).
+        Callers holding `FORMS_SUBMIT` without `FORMS_READ`, which includes
+        every app caller (apps can't be granted `FORMS_READ`), see only
+        published forms with `showInCommunity` on, with the real
+        `submissionCount` and only the render part of `settings`
+        (`respondent`, `theme`, `css`; see `Form`). A 403 to an app names
+        `FORMS_SUBMIT`, the scope an app can be granted.
+      operationId: listForms
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200":
+          $ref: "#/components/responses/FormList"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Forms]
+      summary: Create a form
+      operationId: createForm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FormWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/FormItem"
+        "400":
+          $ref: "#/components/responses/InvalidWriteBody"
+  /forms/generate:
+    post:
+      tags: [Forms]
+      summary: Generate a form definition
+      operationId: generateForm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt:
+                  type: string
+                create:
+                  type: boolean
+                name:
+                  type: string
+      responses:
+        "201":
+          $ref: "#/components/responses/FormGenerate"
+        "400":
+          $ref: "#/components/responses/InvalidWriteBody"
+  /forms/{formId}:
+    parameters:
+      - $ref: "#/components/parameters/FormId"
+    get:
+      tags: [Forms]
+      summary: Get a form
+      operationId: getForm
+      responses:
+        "200":
+          $ref: "#/components/responses/FormItem"
+    patch:
+      tags: [Forms]
+      summary: Update a form
+      operationId: updateForm
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FormWrite"
+      responses:
+        "200":
+          $ref: "#/components/responses/FormItem"
+        "400":
+          $ref: "#/components/responses/InvalidWriteBody"
+    delete:
+      tags: [Forms]
+      summary: Delete a form
+      operationId: deleteForm
+      responses:
+        "200":
+          $ref: "#/components/responses/FormItem"
+  /forms/{formId}/submissions:
+    parameters:
+      - $ref: "#/components/parameters/FormId"
+    get:
+      tags: [Forms]
+      summary: List submissions for a form
+      operationId: listFormSubmissions
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [HOST, SITE, EMBED]
+      responses:
+        "200":
+          $ref: "#/components/responses/FormSubmissionList"
+    post:
+      tags: [Forms]
+      summary: Submit a form as a member
+      description: >
+        Requires `FORMS_SUBMIT` (`FORMS_WRITE` also works). Submits the
+        published form for the member, like a member filling it in: the normal
+        form side effects run (`form.submitted`, workflows, event registration
+        for a linked event). Consent is never recorded through the API: the
+        answers are stored with the submission, but marketing consent,
+        guardian consent and the guardian email are not set on the contact.
+        A member without a primary contact gets one, as for event
+        registration. Callers holding `FORMS_SUBMIT` without `FORMS_READ`
+        (every app caller) can only submit forms with `showInCommunity` on.
+      operationId: submitFormAsMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberFormSubmissionWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/FormSubmissionItem"
+        "400":
+          description: >
+            `Invalid JSON body.`, an invalid body (a readable validation
+            message), or invalid answers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Form or member not found, form not published, or not shown in community
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          $ref: "#/components/responses/MemberContactConflict"
+  /form-submissions/{submissionId}:
+    parameters:
+      - $ref: "#/components/parameters/FormSubmissionId"
+    get:
+      tags: [Forms]
+      summary: Get a form submission
+      operationId: getFormSubmission
+      responses:
+        "200":
+          $ref: "#/components/responses/FormSubmissionItem"
+    patch:
+      tags: [Forms]
+      summary: Update a form submission
+      description: >-
+        Patch stored answers, status, or CRM links. Merged answers are validated
+        against the form definition. Does not re-run form.submitted side effects.
+        Pass null on a link id to unlink. Contact and opportunity records stay.
+      operationId: updateFormSubmission
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FormSubmissionPatch"
+      responses:
+        "200":
+          $ref: "#/components/responses/FormSubmissionItem"
+        "400":
+          $ref: "#/components/responses/InvalidWriteBody"
+    delete:
+      tags: [Forms]
+      summary: Delete a form submission
+      description: >-
+        Stored answers are removed. The contact and opportunity stay.
+      operationId: deleteFormSubmission
+      responses:
+        "200":
+          $ref: "#/components/responses/FormSubmissionItem"
+  /pipelines:
+    get:
+      tags: [Pipelines]
+      summary: List pipelines
+      operationId: listPipelines
+      responses:
+        "200":
+          $ref: "#/components/responses/PipelineList"
+    post:
+      tags: [Pipelines]
+      summary: Create a pipeline
+      operationId: createPipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/PipelineItem"
+  /pipelines/{pipelineId}:
+    parameters:
+      - $ref: "#/components/parameters/PipelineId"
+    get:
+      tags: [Pipelines]
+      summary: Get a pipeline
+      operationId: getPipeline
+      responses:
+        "200":
+          $ref: "#/components/responses/PipelineItem"
+    patch:
+      tags: [Pipelines]
+      summary: Rename a pipeline
+      operationId: updatePipeline
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineWrite"
+      responses:
+        "200":
+          $ref: "#/components/responses/PipelineItem"
+    delete:
+      tags: [Pipelines]
+      summary: Delete a pipeline
+      operationId: deletePipeline
+      responses:
+        "200":
+          $ref: "#/components/responses/PipelineItem"
+  /pipelines/{pipelineId}/stages:
+    parameters:
+      - $ref: "#/components/parameters/PipelineId"
+    get:
+      tags: [Pipelines]
+      summary: List stages in a pipeline
+      operationId: listPipelineStages
+      responses:
+        "200":
+          $ref: "#/components/responses/PipelineStageList"
+    post:
+      tags: [Pipelines]
+      summary: Create a stage
+      operationId: createPipelineStage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineStageWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/PipelineStageItem"
+  /pipeline-stages/{stageId}:
+    parameters:
+      - $ref: "#/components/parameters/StageId"
+    patch:
+      tags: [Pipelines]
+      summary: Update a stage
+      operationId: updatePipelineStage
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineStagePatch"
+      responses:
+        "200":
+          $ref: "#/components/responses/PipelineStageItem"
+    delete:
+      tags: [Pipelines]
+      summary: Delete a stage
+      operationId: deletePipelineStage
+      parameters:
+        - name: targetStageId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/PipelineStageItem"
+  /opportunities:
+    get:
+      tags: [Opportunities]
+      summary: List opportunities
+      operationId: listOpportunities
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: pipelineId
+          in: query
+          schema:
+            type: string
+        - name: contactId
+          in: query
+          schema:
+            type: string
+        - name: customerId
+          in: query
+          schema:
+            type: string
+        - name: stageType
+          in: query
+          schema:
+            type: string
+            enum: [OPEN, WON, LOST]
+        - name: closeReason
+          in: query
+          schema:
+            $ref: "#/components/schemas/OpportunityCloseReason"
+      responses:
+        "200":
+          $ref: "#/components/responses/OpportunityList"
+    post:
+      tags: [Opportunities]
+      summary: Create an opportunity
+      operationId: createOpportunity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpportunityWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/OpportunityItem"
+  /opportunities/{opportunityId}:
+    parameters:
+      - $ref: "#/components/parameters/OpportunityId"
+    get:
+      tags: [Opportunities]
+      summary: Get an opportunity
+      operationId: getOpportunity
+      responses:
+        "200":
+          $ref: "#/components/responses/OpportunityItem"
+    patch:
+      tags: [Opportunities]
+      summary: Update an opportunity
+      operationId: updateOpportunity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpportunityPatch"
+      responses:
+        "200":
+          $ref: "#/components/responses/OpportunityItem"
+    delete:
+      tags: [Opportunities]
+      summary: Delete an opportunity
+      operationId: deleteOpportunity
+      responses:
+        "200":
+          $ref: "#/components/responses/OpportunityItem"
+  /opportunities/{opportunityId}/move:
+    post:
+      tags: [Opportunities]
+      summary: Move an opportunity
+      description: A LOST stage needs closeReason. A nurture stage (isNurture) needs nurtureReason. Leaving a nurture stage (including Won, Lost, and other OPEN stages) clears nurtureReason. Moving to an OPEN stage also clears closeReason and closedAt.
+      operationId: moveOpportunity
+      parameters:
+        - $ref: "#/components/parameters/OpportunityId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpportunityMove"
+      responses:
+        "200":
+          $ref: "#/components/responses/OpportunityItem"
+  /invoices:
+    get:
+      tags: [Invoices]
+      summary: List invoices
+      operationId: listInvoices
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/InvoiceList"
+    post:
+      tags: [Invoices]
+      summary: Create an invoice
+      operationId: createInvoice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/InvoiceItem"
+  /invoices/{invoiceId}:
+    parameters:
+      - $ref: "#/components/parameters/InvoiceId"
+    get:
+      tags: [Invoices]
+      summary: Get an invoice
+      operationId: getInvoice
+      responses:
+        "200":
+          $ref: "#/components/responses/InvoiceItem"
+    patch:
+      tags: [Invoices]
+      summary: Update a draft invoice
+      operationId: updateInvoice
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceWrite"
+      responses:
+        "200":
+          $ref: "#/components/responses/InvoiceItem"
+    delete:
+      tags: [Invoices]
+      summary: Delete a draft invoice
+      operationId: deleteInvoice
+      responses:
+        "200":
+          $ref: "#/components/responses/InvoiceItem"
+  /invoices/{invoiceId}/finalize:
+    post:
+      tags: [Invoices]
+      summary: Finalize an invoice
+      operationId: finalizeInvoice
+      parameters:
+        - $ref: "#/components/parameters/InvoiceId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dueAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+      responses:
+        "200":
+          $ref: "#/components/responses/InvoiceItem"
+  /invoices/{invoiceId}/mark-paid:
+    post:
+      tags: [Invoices]
+      summary: Mark an invoice paid
+      operationId: markInvoicePaid
+      parameters:
+        - $ref: "#/components/parameters/InvoiceId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                method:
+                  type: string
+                  enum: [STRIPE, BANK_TRANSFER, MANUAL]
+      responses:
+        "200":
+          $ref: "#/components/responses/InvoiceItem"
+  /payments:
+    get:
+      tags: [Payments]
+      summary: List payments
+      operationId: listPayments
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: source
+          in: query
+          schema:
+            $ref: "#/components/schemas/PaymentSource"
+        - name: sourceLabel
+          in: query
+          schema:
+            type: string
+        - name: externalRef
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/PaymentList"
+    post:
+      tags: [Payments]
+      summary: Create a payment
+      operationId: createPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/PaymentItem"
+  /payments/{paymentId}:
+    parameters:
+      - $ref: "#/components/parameters/PaymentId"
+    get:
+      tags: [Payments]
+      summary: Get a payment
+      operationId: getPayment
+      responses:
+        "200":
+          $ref: "#/components/responses/PaymentItem"
+    patch:
+      tags: [Payments]
+      summary: Update a payment
+      description: >-
+        A new `amount` on a completed payment posts a ledger adjustment and
+        re-splits revenue share; `adjustmentNote` records why. `status:
+        REFUNDED` on a completed payment runs the full refund (ledger,
+        revenue share, plan access). Refunded payments accept only `note` and
+        `paidAt`. Invoice payments cannot change `amount` (edit the invoice).
+        `customerId` is locked once the payment granted a plan, paid an
+        invoice, or posted to the ledger. Changing `amount` and refunding in
+        one request is rejected.
+      operationId: updatePayment
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/PaymentWrite"
+                - type: object
+                  properties:
+                    adjustmentNote:
+                      type: string
+                      maxLength: 500
+                      description: Reason for an amount change, kept in the payment's amount history.
+      responses:
+        "200":
+          $ref: "#/components/responses/PaymentItem"
+  /purchases:
+    post:
+      tags: [Payments]
+      summary: Record a purchase
+      description: Idempotent on `externalRef`. `201` when recorded, `200` when already recorded. Amount is integer minor units.
+      operationId: recordPurchase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PurchaseWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/PurchaseItem"
+        "200":
+          $ref: "#/components/responses/PurchaseItem"
+  /purchases/{externalRef}/reverse:
+    parameters:
+      - $ref: "#/components/parameters/ExternalRef"
+    post:
+      tags: [Payments]
+      summary: Reverse a purchase
+      description: Marks the payment refunded. Idempotent if already refunded.
+      operationId: reversePurchase
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 200
+      responses:
+        "200":
+          $ref: "#/components/responses/PaymentItem"
+  /meta/conversions:
+    get:
+      tags: [Meta]
+      summary: List Meta conversions
+      operationId: listMetaConversions
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/MetaConversionStatus"
+        - name: siteId
+          in: query
+          schema:
+            type: string
+        - name: source
+          in: query
+          schema:
+            $ref: "#/components/schemas/PaymentSource"
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          $ref: "#/components/responses/MetaConversionList"
+  /meta/conversions/export.csv:
+    get:
+      tags: [Meta]
+      summary: Export offline conversions CSV
+      description: Hashed match keys in Meta's offline upload format. Default rows are SKIPPED (TOO_OLD/NO_SITE/SWITCH_OFF), FAILED, and EXPORT_ONLY. Reversed, OPTED_OUT, and MINOR rows are excluded.
+      operationId: exportMetaConversions
+      parameters:
+        - name: siteId
+          in: query
+          schema:
+            type: string
+        - name: source
+          in: query
+          schema:
+            $ref: "#/components/schemas/PaymentSource"
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: includeSent
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+  /meta/conversions/{conversionId}/retry:
+    parameters:
+      - $ref: "#/components/parameters/ConversionId"
+    post:
+      tags: [Meta]
+      summary: Retry a failed Meta conversion
+      operationId: retryMetaConversion
+      responses:
+        "200":
+          $ref: "#/components/responses/MetaConversionItem"
+  /channels:
+    get:
+      tags: [Chats]
+      summary: List channels
+      operationId: listChannels
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200":
+          $ref: "#/components/responses/ChannelList"
+    post:
+      tags: [Chats]
+      summary: Create a channel
+      operationId: createChannel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/ChannelItem"
+  /channels/{channelId}:
+    parameters:
+      - $ref: "#/components/parameters/ChannelId"
+    get:
+      tags: [Chats]
+      summary: Get a channel
+      operationId: getChannel
+      responses:
+        "200":
+          $ref: "#/components/responses/ChannelItem"
+    patch:
+      tags: [Chats]
+      summary: Update a channel
+      operationId: updateChannel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelWrite"
+      responses:
+        "200":
+          $ref: "#/components/responses/ChannelItem"
+  /channels/{channelId}/messages:
+    parameters:
+      - $ref: "#/components/parameters/ChannelId"
+    get:
+      tags: [Chats]
+      summary: List channel messages
+      operationId: listChannelMessages
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/MessageList"
+    post:
+      tags: [Chats]
+      summary: Create a message
+      operationId: createMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/MessageItem"
+  /messages/{messageId}:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    patch:
+      tags: [Chats]
+      summary: Update a message
+      operationId: updateMessage
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageWrite"
+      responses:
+        "200":
+          $ref: "#/components/responses/MessageItem"
+    delete:
+      tags: [Chats]
+      summary: Delete a message
+      operationId: deleteMessage
+      responses:
+        "200":
+          $ref: "#/components/responses/MessageItem"
+  /embed/projects:
+    get:
+      tags: [Embed]
+      summary: List an embed user's projects
+      operationId: listEmbedProjects
+      description: >
+        Returns non-archived projects owned by the host-site user, with each
+        project's statuses. Requires `EMBED_WRITE`. An unknown
+        `externalUserId` returns an empty list and `embedUser: null`. Creating
+        a task still uses `POST /projects/{projectId}/tasks` and `TASKS_WRITE`.
+      parameters:
+        - name: externalUserId
+          in: query
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200":
+          $ref: "#/components/responses/EmbedProjectList"
+  /embed/sessions:
+    post:
+      tags: [Embed]
+      summary: Mint an embed session
+      operationId: createEmbedSession
+      description: >
+        Upserts the host-site end-user and returns a short-lived token plus an
+        iframe URL. Requires the `EMBED_WRITE` scope. Embed must be enabled
+        with at least one allowed origin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbedSessionWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/EmbedSessionItem"
+  /community/members:
+    get:
+      tags: [Community]
+      summary: List community members
+      operationId: listCommunityMembers
+      description: >
+        Requires `COMMUNITY_MEMBERS_READ`. Members of the workspace's
+        community, oldest first. `search` matches only names the response
+        shows: username and `displayName` (the customer or contact name is
+        searched only when it is the `displayName` fallback). It never matches
+        email addresses. Returns
+        403 when the Community module is disabled and 404 when the workspace
+        has no community.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityMemberList"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No community
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /community/members/{memberId}:
+    parameters:
+      - $ref: "#/components/parameters/MemberId"
+    get:
+      tags: [Community]
+      summary: Get a community member
+      operationId: getCommunityMember
+      description: Requires `COMMUNITY_MEMBERS_READ`.
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityMemberItem"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Member not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /community/channels/{channelId}/messages:
+    parameters:
+      - $ref: "#/components/parameters/ChannelId"
+    get:
+      tags: [Community]
+      summary: List messages in a channel
+      operationId: listCommunityMessages
+      description: >
+        Requires `COMMUNITY_MESSAGES_READ` (`COMMUNITY_MESSAGES_WRITE` alone is
+        not enough). Newest first, with reaction counts. Only channels
+        `@everyone` can view; others are 404 "Channel not found." so private
+        channels look missing. Deleted messages are left out. Page with
+        `cursor`: pass the previous response's `meta.nextCursor` until it is
+        null.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/CursorLimit"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityMessagePage"
+        "400":
+          description: Invalid cursor or limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Channel not found, or `@everyone` can't view it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [Community]
+      summary: Post a message as the app
+      operationId: createCommunityAppMessage
+      description: >
+        Requires `COMMUNITY_MESSAGES_WRITE` and an app caller (`pwa_` secret);
+        workspace API keys get 403. The channel must be a text channel in the
+        workspace's community. The app posts with the rights of the
+        `@everyone` role, after category and channel overwrites; staff roles
+        never apply. If `@everyone` can't view the channel the response is 404
+        "Channel not found." so private channels look missing. If `@everyone`
+        can view but not send messages the response is 403 "This app can't
+        post in that channel.". `replyToId` must be a top-level message in the
+        same channel (one level of replies). The message is shown live under
+        the app's name; members cannot edit it, moderators can delete it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityAppMessageWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/CommunityAppMessageItem"
+        "400":
+          description: Invalid body, non-text channel, or invalid reply target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >
+            Not an app caller, Community disabled, missing scope, or
+            `@everyone` can't send messages in the channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+        "404":
+          description: >
+            Channel or reply target not found, or `@everyone` can't view the
+            channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /community/channels:
+    get:
+      tags: [Community]
+      summary: List channels
+      operationId: listCommunityChannels
+      description: >
+        Requires `COMMUNITY_MESSAGES_READ` (`COMMUNITY_MESSAGES_WRITE` also
+        works, so an app that only posts can find a channel). Text and app
+        channels the `@everyone` role can view, after category and channel
+        overwrites, in sidebar order. App channels whose app is uninstalled or
+        no longer available are left out. Private channels are never listed. Returns 403 when the
+        Community module is disabled and 404 when the workspace has no
+        community.
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityChannelList"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No community
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /community/courses:
+    get:
+      tags: [Community]
+      summary: List courses
+      operationId: listCommunityCourses
+      description: >
+        Requires `COURSES_READ` (`COURSE_PROGRESS_WRITE` also works). Published
+        courses members can see (sold through at least one product) in sidebar
+        order, without their outline. `chapterCount` and `moduleCount` skip
+        chapters without modules.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityCourseList"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No community
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /community/courses/{courseId}:
+    parameters:
+      - $ref: "#/components/parameters/CourseId"
+    get:
+      tags: [Community]
+      summary: Get a course outline
+      operationId: getCommunityCourse
+      description: >
+        Requires `COURSES_READ` (`COURSE_PROGRESS_WRITE` also works). The
+        published course with its chapters and modules in order. Chapters
+        without modules are left out, as members see them. Module bodies,
+        videos and attachments are not included. Unpublished courses, and
+        courses not sold through any product, are 404.
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityCourseItem"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Course not found, not published, or not sold through a product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /community/members/{memberId}/progress:
+    parameters:
+      - $ref: "#/components/parameters/MemberId"
+    get:
+      tags: [Community]
+      summary: List a member's course progress
+      operationId: listCommunityMemberProgress
+      description: >
+        Requires `COURSES_READ` (`COURSE_PROGRESS_WRITE` also works). One row
+        per module the member has started or completed, in courses members can
+        see (published and sold through at least one product, as
+        `GET /community/courses` lists them). Filter with `courseId`; any
+        other course is 404.
+      parameters:
+        - name: courseId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityModuleProgressList"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Member or course not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /community/members/{memberId}/progress/{moduleId}:
+    parameters:
+      - $ref: "#/components/parameters/MemberId"
+      - $ref: "#/components/parameters/ModuleId"
+    put:
+      tags: [Community]
+      summary: Complete a module for a member
+      operationId: completeCommunityModule
+      description: >
+        Requires `COURSE_PROGRESS_WRITE`. Marks the module complete for the
+        member. Safe to repeat: an already completed module keeps its original
+        `completedAt`. Works for any module of a course members can see
+        (published and sold through at least one product), whatever the
+        member's plan. Emits `community.module.completed`, and
+        `community.course.completed` when this completes the course, at most
+        once per member and course (uncompleting and completing the last module
+        again does not repeat it). The member must be `ACTIVE`.
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityModuleProgressItem"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Member or module not found, or course not visible to members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          $ref: "#/components/responses/MemberNotActive"
+    delete:
+      tags: [Community]
+      summary: Uncomplete a module for a member
+      operationId: uncompleteCommunityModule
+      description: >
+        Requires `COURSE_PROGRESS_WRITE`. Clears `completedAt` and keeps the
+        video position. Safe to repeat. The member must be `ACTIVE`.
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityModuleProgressItem"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Member or module not found, or course not visible to members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          $ref: "#/components/responses/MemberNotActive"
+  /community/badges:
+    get:
+      tags: [Community]
+      summary: List the app's badges
+      operationId: listCommunityBadges
+      description: >
+        Requires `COMMUNITY_BADGES_WRITE` and an app caller (`pwa_` secret);
+        workspace API keys get 403. Badges this app defined in the installing
+        workspace, oldest first.
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityBadgeList"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Community]
+      summary: Create or update a badge by key
+      operationId: upsertCommunityBadge
+      description: >
+        Requires `COMMUNITY_BADGES_WRITE` and an app caller. `key` is the app's
+        stable slug for the badge: posting an existing key updates that badge
+        (200), a new key creates one (201). Badges belong to the app in this
+        workspace, so they come back with their awards after a reinstall. An
+        app can have at most 50 badges per workspace; a new key past that is
+        409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityBadgeWrite"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityBadgeItem"
+        "201":
+          $ref: "#/components/responses/CommunityBadgeItem"
+        "400":
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: The app already has 50 badges in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /community/badges/{badgeId}:
+    parameters:
+      - $ref: "#/components/parameters/BadgeId"
+    patch:
+      tags: [Community]
+      summary: Update a badge
+      operationId: updateCommunityBadge
+      description: >
+        Requires `COMMUNITY_BADGES_WRITE` and an app caller. Only the app's own
+        badges; others are 404. `key` can't change.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityBadgePatch"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityBadgeItem"
+        "400":
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Badge not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [Community]
+      summary: Delete a badge
+      operationId: deleteCommunityBadge
+      description: >
+        Requires `COMMUNITY_BADGES_WRITE` and an app caller. Deletes the badge
+        and every award of it. No `community.badge.revoked` events are sent.
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [id, deleted]
+                    properties:
+                      id:
+                        type: string
+                      deleted:
+                        type: boolean
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Badge not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /community/members/{memberId}/badges/{badgeId}:
+    parameters:
+      - $ref: "#/components/parameters/MemberId"
+      - $ref: "#/components/parameters/BadgeId"
+    put:
+      tags: [Community]
+      summary: Award a badge to a member
+      operationId: awardCommunityBadge
+      description: >
+        Requires `COMMUNITY_BADGES_WRITE` and an app caller. Safe to repeat: an
+        existing award keeps its `awardedAt` and sends no event. A new award
+        emits `community.badge.awarded`. The member must be `ACTIVE`.
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityMemberBadgeItem"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Member or badge not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          $ref: "#/components/responses/MemberNotActive"
+    delete:
+      tags: [Community]
+      summary: Revoke a badge from a member
+      operationId: revokeCommunityBadge
+      description: >
+        Requires `COMMUNITY_BADGES_WRITE` and an app caller. Safe to repeat.
+        Removing an existing award emits `community.badge.revoked`. Works for
+        members in any status.
+      responses:
+        "200":
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [badgeId, memberId, revoked]
+                    properties:
+                      badgeId:
+                        type: string
+                      memberId:
+                        type: string
+                      revoked:
+                        type: boolean
+                        description: False when the member did not hold the badge.
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Member or badge not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /sites:
+    get:
+      tags: [Sites]
+      summary: List sites
+      operationId: listSites
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200":
+          $ref: "#/components/responses/SiteList"
+    post:
+      tags: [Sites]
+      summary: Create a site
+      description: Creates the site with an empty homepage.
+      operationId: createSite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/SiteItem"
+  /sites/{siteId}:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    get:
+      tags: [Sites]
+      summary: Get a site
+      operationId: getSite
+      responses:
+        "200":
+          $ref: "#/components/responses/SiteItem"
+    patch:
+      tags: [Sites]
+      summary: Update a site
+      operationId: updateSite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SitePatch"
+      responses:
+        "200":
+          $ref: "#/components/responses/SiteItem"
+    delete:
+      tags: [Sites]
+      summary: Delete a site
+      description: Moves the site to trash for 30 days.
+      operationId: deleteSite
+      responses:
+        "200":
+          $ref: "#/components/responses/SiteItem"
+  /sites/{siteId}/publish:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Sites]
+      summary: Publish a site
+      description: Publishes draft pages, the header and footer, and collection templates, plus every PUBLISHED collection item with staged changes.
+      operationId: publishSite
+      responses:
+        "200":
+          description: The new site version
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/SiteVersion"
+  /sites/{siteId}/unpublish:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Sites]
+      summary: Unpublish a site
+      operationId: unpublishSite
+      responses:
+        "200":
+          $ref: "#/components/responses/SiteItem"
+  /sites/{siteId}/pages:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    get:
+      tags: [Sites]
+      summary: List pages
+      description: Pages in site order. `kind` defaults to PAGE; HEADER and FOOTER are the site chrome, TEMPLATE pages belong to collections.
+      operationId: listSitePages
+      parameters:
+        - name: kind
+          in: query
+          schema:
+            $ref: "#/components/schemas/SitePageKind"
+      responses:
+        "200":
+          $ref: "#/components/responses/SitePageList"
+    post:
+      tags: [Sites]
+      summary: Create a page
+      operationId: createSitePage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SitePageWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/SitePageItem"
+  /sites/{siteId}/pages/{pageId}:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageId"
+    get:
+      tags: [Sites]
+      summary: Get a page
+      description: Includes the draft body tree and `contentVersion`.
+      operationId: getSitePage
+      responses:
+        "200":
+          $ref: "#/components/responses/SitePageItem"
+    patch:
+      tags: [Sites]
+      summary: Update a page
+      description: "`body` must be a complete body SiteElement tree. Pass `expectedContentVersion` to fail instead of overwriting newer edits. Header, footer, and template pages take `title` and `body` only."
+      operationId: updateSitePage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SitePagePatch"
+      responses:
+        "200":
+          $ref: "#/components/responses/SitePageItem"
+    delete:
+      tags: [Sites]
+      summary: Delete a page
+      description: The homepage cannot be deleted.
+      operationId: deleteSitePage
+      responses:
+        "200":
+          $ref: "#/components/responses/SitePageItem"
+  /sites/{siteId}/collections:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    get:
+      tags: [Sites]
+      summary: List collections
+      operationId: listSiteCollections
+      responses:
+        "200":
+          $ref: "#/components/responses/SiteCollectionList"
+    post:
+      tags: [Sites]
+      summary: Create a collection
+      description: Also creates the collection's TEMPLATE page. A PAGE with the same slug acts as the index. Nothing is served until the next site publish.
+      operationId: createSiteCollection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteCollectionWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/SiteCollectionItem"
+  /sites/{siteId}/collections/{collectionId}:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/CollectionId"
+    get:
+      tags: [Sites]
+      summary: Get a collection
+      operationId: getSiteCollection
+      responses:
+        "200":
+          $ref: "#/components/responses/SiteCollectionItem"
+    patch:
+      tags: [Sites]
+      summary: Update a collection
+      description: Send the full `fields` list. Removing a field keeps its stored values on items. `jsonLd` null removes it.
+      operationId: updateSiteCollection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteCollectionPatch"
+      responses:
+        "200":
+          $ref: "#/components/responses/SiteCollectionItem"
+    delete:
+      tags: [Sites]
+      summary: Delete a collection
+      description: Deletes its items and template page. Fails while another collection has a reference field pointing at it.
+      operationId: deleteSiteCollection
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      deleted:
+                        type: boolean
+  /sites/{siteId}/collections/{collectionId}/items:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/CollectionId"
+    get:
+      tags: [Sites]
+      summary: List collection items
+      description: Drafts included. `search` matches name or slug.
+      operationId: listCollectionItems
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/CollectionItemStatus"
+      responses:
+        "200":
+          $ref: "#/components/responses/CollectionEntryList"
+    post:
+      tags: [Sites]
+      summary: Create a collection item
+      description: Creates a draft (or ARCHIVED). `publish` true also puts it live. Counts toward the plan's items-per-site limit.
+      operationId: createCollectionItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionEntryWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/CollectionEntryItem"
+  /sites/{siteId}/collections/{collectionId}/items/{itemId}:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/CollectionId"
+      - $ref: "#/components/parameters/ItemId"
+    get:
+      tags: [Sites]
+      summary: Get a collection item
+      operationId: getCollectionItem
+      responses:
+        "200":
+          $ref: "#/components/responses/CollectionEntryItem"
+    patch:
+      tags: [Sites]
+      summary: Update a collection item
+      description: Edits the draft. `status` DRAFT unpublishes, ARCHIVED hides. `publish` true puts the saved draft live. Without `expectedContentVersion` the current draft is overwritten; a stale one fails.
+      operationId: updateCollectionItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionEntryPatch"
+      responses:
+        "200":
+          $ref: "#/components/responses/CollectionEntryItem"
+    delete:
+      tags: [Sites]
+      summary: Delete a collection item
+      description: Also removes it from other items' reference fields.
+      operationId: deleteCollectionItem
+      responses:
+        "200":
+          $ref: "#/components/responses/CollectionDeleteResult"
+  /sites/{siteId}/collections/{collectionId}/publish:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/CollectionId"
+    post:
+      tags: [Sites]
+      summary: Publish collection items
+      description: Puts items live now through the currently published template. The site must have been published once. Needs site publish permission.
+      operationId: publishCollectionItems
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionItemIds"
+      responses:
+        "200":
+          description: Count of items changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      published:
+                        type: integer
+  /sites/{siteId}/collections/{collectionId}/unpublish:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/CollectionId"
+    post:
+      tags: [Sites]
+      summary: Unpublish collection items
+      description: Takes items off the live site; they return to DRAFT. Needs site publish permission.
+      operationId: unpublishCollectionItems
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionItemIds"
+      responses:
+        "200":
+          description: Count of items changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      unpublished:
+                        type: integer
+  /sites/{siteId}/collections/{collectionId}/archive:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/CollectionId"
+    post:
+      tags: [Sites]
+      summary: Archive collection items
+      description: Hides items and takes them off the live site. Archiving live items needs site publish permission.
+      operationId: archiveCollectionItems
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionItemIds"
+      responses:
+        "200":
+          description: Count of items changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      archived:
+                        type: integer
+  /sites/{siteId}/collections/{collectionId}/upsert:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/CollectionId"
+    post:
+      tags: [Sites]
+      summary: Upsert collection items
+      description: Creates or updates items by `slug`. Existing items keep fields a row leaves out and keep their status; new items are drafts; nothing is published. Up to 200 rows run inline; more return a `jobId` to poll with `GET /jobs/{jobId}`.
+      operationId: upsertCollectionItems
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rows]
+              properties:
+                rows:
+                  type: array
+                  minItems: 1
+                  maxItems: 20000
+                  items:
+                    $ref: "#/components/schemas/CollectionUpsertRow"
+      responses:
+        "200":
+          description: Inline result or a background job
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CollectionUpsertResult"
+components:
+  securitySchemes:
+    ApiKeyHeader:
+      type: apiKey
+      in: header
+      name: x-api-key
+    BearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 50
+        maximum: 100
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+    Search:
+      name: search
+      in: query
+      schema:
+        type: string
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
+    CustomerId:
+      name: customerId
+      in: path
+      required: true
+      schema:
+        type: string
+    ContactId:
+      name: contactId
+      in: path
+      required: true
+      schema:
+        type: string
+    SequenceId:
+      name: sequenceId
+      in: path
+      required: true
+      schema:
+        type: string
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        type: string
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      schema:
+        type: string
+    FormId:
+      name: formId
+      in: path
+      required: true
+      schema:
+        type: string
+    FormSubmissionId:
+      name: submissionId
+      in: path
+      required: true
+      schema:
+        type: string
+    PipelineId:
+      name: pipelineId
+      in: path
+      required: true
+      schema:
+        type: string
+    StageId:
+      name: stageId
+      in: path
+      required: true
+      schema:
+        type: string
+    OpportunityId:
+      name: opportunityId
+      in: path
+      required: true
+      schema:
+        type: string
+    InvoiceId:
+      name: invoiceId
+      in: path
+      required: true
+      schema:
+        type: string
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      schema:
+        type: string
+    ExternalRef:
+      name: externalRef
+      in: path
+      required: true
+      schema:
+        type: string
+    ConversionId:
+      name: conversionId
+      in: path
+      required: true
+      schema:
+        type: string
+    ChannelId:
+      name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+    MessageId:
+      name: messageId
+      in: path
+      required: true
+      schema:
+        type: string
+    MemberId:
+      name: memberId
+      in: path
+      required: true
+      description: Community membership id
+      schema:
+        type: string
+    SiteId:
+      name: siteId
+      in: path
+      required: true
+      schema:
+        type: string
+    PageId:
+      name: pageId
+      in: path
+      required: true
+      schema:
+        type: string
+    CollectionId:
+      name: collectionId
+      in: path
+      required: true
+      schema:
+        type: string
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      schema:
+        type: string
+    CourseId:
+      name: courseId
+      in: path
+      required: true
+      schema:
+        type: string
+    ModuleId:
+      name: moduleId
+      in: path
+      required: true
+      schema:
+        type: string
+    BadgeId:
+      name: badgeId
+      in: path
+      required: true
+      schema:
+        type: string
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor from the previous page's `meta.nextCursor`. Omit for the first page.
+      schema:
+        type: string
+    CursorLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+  schemas:
+    ListMeta:
+      type: object
+      required: [total, limit, offset]
+      properties:
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    ForbiddenError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        missingScope:
+          type: string
+          description: >
+            The API permission the caller lacks, as its key (for example
+            `EVENTS_READ`). For an app caller it is the first such scope an app
+            can be granted (`FORMS_SUBMIT` rather than `FORMS_READ`). Present
+            only when the 403 is a missing scope; absent for other 403s such as
+            a disabled module.
+    ValidationErrorTree:
+      type: object
+      description: >
+        Body of a 400 from a workspace (non-app) write route whose input fails
+        validation: Zod's `treeifyError` output. `errors` holds messages for
+        the whole body, `properties` a tree per field.
+      required: [errors]
+      properties:
+        errors:
+          type: array
+          items:
+            type: string
+        properties:
+          type: object
+          additionalProperties: true
+    CursorMeta:
+      type: object
+      required: [nextCursor]
+      properties:
+        nextCursor:
+          type: string
+          nullable: true
+          description: Pass as `cursor` for the next page. Null on the last page.
+    CommunityChannel:
+      type: object
+      required: [id, name, slug, description, kind, categoryId, position]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        kind:
+          type: string
+          enum: [TEXT, APP]
+        categoryId:
+          type: string
+          nullable: true
+        position:
+          type: integer
+          description: Sidebar order within the category.
+    CommunityReactionCount:
+      type: object
+      required: [emoji, count]
+      properties:
+        emoji:
+          type: string
+        count:
+          type: integer
+          minimum: 1
+    CommunityMessageAuthor:
+      type: object
+      required: [kind, memberId, installationId, name]
+      properties:
+        kind:
+          type: string
+          enum: [member, staff, app]
+        memberId:
+          type: string
+          nullable: true
+          description: Community membership id when `kind` is `member`.
+        installationId:
+          type: string
+          nullable: true
+          description: App installation id when `kind` is `app`.
+        name:
+          type: string
+    CommunityMessage:
+      type: object
+      required:
+        [id, channelId, body, replyToId, createdAt, editedAt, author, reactions]
+      properties:
+        id:
+          type: string
+        channelId:
+          type: string
+        body:
+          type: string
+        replyToId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        editedAt:
+          type: string
+          format: date-time
+          nullable: true
+        author:
+          $ref: "#/components/schemas/CommunityMessageAuthor"
+        reactions:
+          type: array
+          description: One entry per emoji, most used first.
+          items:
+            $ref: "#/components/schemas/CommunityReactionCount"
+    CommunityCourseSummary:
+      type: object
+      required:
+        [
+          id,
+          title,
+          description,
+          position,
+          chapterCount,
+          moduleCount,
+          publishedAt,
+        ]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        position:
+          type: integer
+        chapterCount:
+          type: integer
+        moduleCount:
+          type: integer
+        publishedAt:
+          type: string
+          format: date-time
+    CommunityCourse:
+      allOf:
+        - $ref: "#/components/schemas/CommunityCourseSummary"
+        - type: object
+          required: [chapters]
+          properties:
+            chapters:
+              type: array
+              items:
+                $ref: "#/components/schemas/CommunityChapter"
+    CommunityChapter:
+      type: object
+      required: [id, title, position, modules]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        position:
+          type: integer
+        modules:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommunityModuleOutline"
+    CommunityModuleOutline:
+      type: object
+      required: [id, title, description, durationSeconds, position]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        durationSeconds:
+          type: integer
+        position:
+          type: integer
+    CommunityModuleProgress:
+      type: object
+      required:
+        [
+          memberId,
+          moduleId,
+          chapterId,
+          courseId,
+          completedAt,
+          videoPositionSeconds,
+        ]
+      properties:
+        memberId:
+          type: string
+        moduleId:
+          type: string
+        chapterId:
+          type: string
+        courseId:
+          type: string
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Null when started but not completed.
+        videoPositionSeconds:
+          type: integer
+    CommunityBadge:
+      type: object
+      required:
+        [
+          id,
+          appId,
+          key,
+          name,
+          description,
+          color,
+          iconUrl,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id:
+          type: string
+        appId:
+          type: string
+        key:
+          type: string
+          description: The app's stable slug for the badge, unique per app and workspace.
+        name:
+          type: string
+        description:
+          type: string
+        color:
+          type: string
+          description: Hex color, `#rrggbb`.
+        iconUrl:
+          type: string
+          nullable: true
+          description: Signed URL valid for about 1 hour; don't store it. Null without an icon.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CommunityBadgeWrite:
+      type: object
+      required: [key, name, color]
+      properties:
+        key:
+          type: string
+          minLength: 1
+          maxLength: 48
+          pattern: "^[a-z0-9][a-z0-9-]*$"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        description:
+          type: string
+          maxLength: 200
+          default: ""
+        color:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+    CommunityBadgePatch:
+      type: object
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        description:
+          type: string
+          maxLength: 200
+        color:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+    CommunityMemberBadge:
+      type: object
+      required: [id, appId, key, name, description, color, iconUrl, awardedAt]
+      properties:
+        id:
+          type: string
+          description: Badge id
+        appId:
+          type: string
+        key:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        color:
+          type: string
+        iconUrl:
+          type: string
+          nullable: true
+        awardedAt:
+          type: string
+          format: date-time
+    EventRegistrationWrite:
+      description: >
+        Exactly one of `memberId` or `contactId`. App callers must send
+        `memberId`; a member without a contact gets one created from their
+        customer record.
+      oneOf:
+        - type: object
+          required: [memberId]
+          additionalProperties: false
+          properties:
+            memberId:
+              type: string
+              description: Community membership id. The member must be `ACTIVE`.
+        - type: object
+          required: [contactId]
+          additionalProperties: false
+          properties:
+            contactId:
+              type: string
+              description: Workspace API keys only.
+    EventAttendanceSet:
+      type: object
+      description: >
+        Exactly one of `memberId` or `contactId`. App callers must send
+        `memberId`. The registrant must already be registered.
+      required: [attendance]
+      properties:
+        memberId:
+          type: string
+        contactId:
+          type: string
+          description: Workspace API keys only.
+        attendance:
+          $ref: "#/components/schemas/AttendanceStatus"
+        joinedAt:
+          type: string
+          format: date-time
+          nullable: true
+        leftAt:
+          type: string
+          format: date-time
+          nullable: true
+    MemberFormSubmissionWrite:
+      type: object
+      required: [memberId, fields]
+      properties:
+        memberId:
+          type: string
+          description: >
+            Community membership id. The member must be `ACTIVE`. The
+            submission links to the member's contact (created from their
+            customer record when missing) and customer.
+        fields:
+          type: object
+          description: >
+            Answers keyed by field `slug` (or `id`), validated against the
+            form's `fields` definition like a public submission. Send a string
+            for text, email, phone, textarea, hidden, select and radio fields
+            (an option `value` for the last two), a number for number fields,
+            a boolean for boolean fields and an array of option values for
+            multi_select. Unknown keys are ignored.
+          additionalProperties:
+            $ref: "#/components/schemas/FormAnswerValue"
+    Project:
+      type: object
+      required: [id, workspaceId, name, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        categoryId:
+          type: string
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+        icon:
+          type: string
+          nullable: true
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ProjectWrite:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+        icon:
+          type: string
+          nullable: true
+        categoryId:
+          type: string
+          nullable: true
+    Task:
+      type: object
+      required:
+        [id, workspaceId, projectId, title, statusId, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        projectId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+          description: Derived plain text from descriptionContent. Not written by the in-app editor.
+        descriptionContent:
+          $ref: "#/components/schemas/TaskDescriptionContent"
+        statusId:
+          type: string
+        parentId:
+          type: string
+          nullable: true
+          description: The parent task when this task is a subtask.
+        priority:
+          type: string
+          enum: [NO_PRIORITY, LOW, MEDIUM, HIGH, URGENT]
+        startDate:
+          type: string
+          format: date-time
+          nullable: true
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        assignees:
+          type: array
+          items:
+            type: object
+            required: [membershipId, displayName]
+            properties:
+              membershipId:
+                type: string
+              displayName:
+                type: string
+              image:
+                type: string
+                nullable: true
+        label:
+          allOf:
+            - $ref: "#/components/schemas/TaskLabel"
+          nullable: true
+    TaskLabel:
+      type: object
+      required: [id, name, color]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+        icon:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+    ProjectLabel:
+      type: object
+      required: [id, projectId, name, color]
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+        icon:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+    TaskDescriptionContent:
+      type: array
+      nullable: true
+      description: >
+        Plate JSON task RTE document (array of nodes). Canonical store.
+        Allowed types, URL rules, and size limits are documented at
+        /docs/task-content. Unknown types and unsafe URLs are rejected.
+      items:
+        type: object
+        additionalProperties: true
+    TaskWrite:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+          description: >
+            Plain text used only when descriptionContent is omitted. Converted
+            into paragraph nodes. Ignored when descriptionContent is sent.
+        descriptionContent:
+          $ref: "#/components/schemas/TaskDescriptionContent"
+        statusId:
+          type: string
+        priority:
+          type: string
+          enum: [NO_PRIORITY, LOW, MEDIUM, HIGH, URGENT]
+        startDate:
+          type: string
+          format: date-time
+          nullable: true
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+        assigneeMembershipIds:
+          type: array
+          items:
+            type: string
+        labelId:
+          type: string
+          nullable: true
+          description: >
+            Project label id from GET /projects/{projectId}/labels. A task has
+            at most one label. Null clears the label on update.
+        parentId:
+          type: string
+          nullable: true
+          description: >
+            Makes this task a subtask. The parent must be a top-level task in
+            the same project; subtasks are one level deep, so a task that has
+            subtasks cannot become one. On update, a new id moves the task to
+            that parent and null unlinks it.
+    CustomerType:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+          nullable: true
+        icon:
+          type: string
+          nullable: true
+    Customer:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        company:
+          type: string
+          nullable: true
+        role:
+          type: string
+          nullable: true
+        typeIds:
+          type: array
+          items:
+            type: string
+        types:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerType"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CustomerWrite:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        company:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        typeIds:
+          type: array
+          items:
+            type: string
+    Contact:
+      type: object
+      required: [id, workspaceId, name, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        customerId:
+          type: string
+          nullable: true
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        role:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        emailMarketingOptOut:
+          type: boolean
+        marketingConsentAt:
+          type: string
+          format: date-time
+          nullable: true
+        ageBand:
+          type: string
+          nullable: true
+          description: under-18 or 18-or-older when known.
+        guardianEmail:
+          type: string
+          nullable: true
+        guardianConsentAt:
+          type: string
+          format: date-time
+          nullable: true
+        dmOptOutAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set when the contact opted out of Instagram DMs. Workflow DM steps skip them.
+        firstTouchSource:
+          allOf:
+            - $ref: "#/components/schemas/ContactSource"
+          nullable: true
+        firstTouchAt:
+          type: string
+          format: date-time
+          nullable: true
+        firstTouchFormId:
+          type: string
+          nullable: true
+        firstTouchUtm:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+        firstTouchRef:
+          type: string
+          nullable: true
+          description: Ad referral ref or partner.
+        metaContext:
+          type: object
+          nullable: true
+          description: Presence of Meta match cookies only. Raw fbp/fbc are never returned.
+          properties:
+            siteId:
+              type: string
+              nullable: true
+            at:
+              type: string
+              format: date-time
+              nullable: true
+            hasFbp:
+              type: boolean
+            hasFbc:
+              type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ContactSource:
+      type: string
+      enum:
+        [
+          FORM,
+          INSTAGRAM_DM,
+          INSTAGRAM_COMMENT,
+          INSTAGRAM_AD,
+          BOOKING,
+          IMPORT,
+          MANUAL,
+          API,
+        ]
+    ContactWrite:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+        customerId:
+          type: string
+    ContactPatch:
+      allOf:
+        - $ref: "#/components/schemas/ContactWrite"
+        - type: object
+          properties:
+            dmOptOut:
+              type: boolean
+              description: true sets dmOptOutAt; false clears it.
+            guardianConsent:
+              type: boolean
+              description: true records guardian consent; false clears it.
+            guardianEmail:
+              type: string
+              nullable: true
+    SequenceLane:
+      type: string
+      enum: [SALES, CLIENT]
+      description: SALES is outreach; CLIENT is onboarding and delivery.
+    SequenceStopReason:
+      type: string
+      enum:
+        [
+          REPLIED,
+          PURCHASED,
+          BOOKED,
+          DECLINED,
+          OPTED_OUT,
+          SUPPORT_OPEN,
+          OUTRANKED,
+          DEAL_WON,
+          DEAL_LOST,
+          CONTACT_MERGED,
+          MANUAL,
+        ]
+    AttendanceStatus:
+      type: string
+      enum: [PENDING, ATTENDED, LEFT_EARLY, NO_SHOW, UNCLASSIFIED]
+    EventAttendanceCounts:
+      type: object
+      properties:
+        registered:
+          type: integer
+        PENDING:
+          type: integer
+        ATTENDED:
+          type: integer
+        LEFT_EARLY:
+          type: integer
+        NO_SHOW:
+          type: integer
+        UNCLASSIFIED:
+          type: integer
+    Event:
+      type: object
+      required:
+        [
+          id,
+          workspaceId,
+          name,
+          slug,
+          startsAt,
+          timezone,
+          status,
+          showInCommunity,
+        ]
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+          nullable: true
+        timezone:
+          type: string
+        offerStartsAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Leaving before this counts as LEFT_EARLY.
+        status:
+          type: string
+          enum: [SCHEDULED, LIVE, ENDED, CANCELLED]
+        formId:
+          type: string
+          nullable: true
+          description: >
+            For app callers, null unless the form is published and has
+            `showInCommunity` on.
+        form:
+          type: object
+          nullable: true
+          description: >
+            The linked form. For app callers, null unless the form is
+            published and has `showInCommunity` on.
+          required: [id, name]
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        pipelineId:
+          type: string
+          nullable: true
+          description: Not sent to app callers.
+        pipeline:
+          type: object
+          nullable: true
+          description: The CRM pipeline new registrations open deals in. Not sent to app callers.
+          required: [id, name]
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        showInCommunity:
+          type: boolean
+          description: Visible to community apps. Staff turn it on in the event's settings.
+        counts:
+          description: Get only.
+          allOf:
+            - $ref: "#/components/schemas/EventAttendanceCounts"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    EventWrite:
+      type: object
+      description: name, startsAt, and timezone are required on create.
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+          description: Lowercase letters, numbers, dashes. Defaults to the name plus the start date.
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+          nullable: true
+        timezone:
+          type: string
+          description: IANA timezone.
+        offerStartsAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [SCHEDULED, LIVE, ENDED, CANCELLED]
+        formId:
+          type: string
+          nullable: true
+          description: Submissions register the contact while SCHEDULED or LIVE.
+        pipelineId:
+          type: string
+          nullable: true
+          description: Each registration opens a deal in the first open stage.
+    EventRegistration:
+      type: object
+      required: [id, eventId, contactId, attendance, registeredAt]
+      properties:
+        id:
+          type: string
+        eventId:
+          type: string
+        contactId:
+          type: string
+        opportunityId:
+          type: string
+          nullable: true
+          description: Not sent to app callers.
+        registeredAt:
+          type: string
+          format: date-time
+        confirmationSentAt:
+          type: string
+          format: date-time
+          nullable: true
+        attendance:
+          $ref: "#/components/schemas/AttendanceStatus"
+        joinedAt:
+          type: string
+          format: date-time
+          nullable: true
+        leftAt:
+          type: string
+          format: date-time
+          nullable: true
+        classifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+        contact:
+          type: object
+          description: Not sent to app callers.
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            email:
+              type: string
+              nullable: true
+    EventRegistrationPatch:
+      type: object
+      properties:
+        attendance:
+          $ref: "#/components/schemas/AttendanceStatus"
+        joinedAt:
+          type: string
+          format: date-time
+          nullable: true
+        leftAt:
+          type: string
+          format: date-time
+          nullable: true
+        opportunityId:
+          type: string
+          nullable: true
+    Sequence:
+      type: object
+      required: [id, workspaceId, key, name, priority, isMarketing, lane]
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        key:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        priority:
+          type: integer
+          description: Higher replaces lower in the same lane when a contact is enrolled.
+        isMarketing:
+          type: boolean
+          description: Marketing sequences stop when the contact unsubscribes.
+        stopOnInboundMessage:
+          type: boolean
+        stopOnPurchase:
+          type: boolean
+        stopOnDealClosed:
+          type: boolean
+        lane:
+          $ref: "#/components/schemas/SequenceLane"
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+        activeCount:
+          type: integer
+          description: List only.
+        pausedCount:
+          type: integer
+          description: List only.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SequenceWrite:
+      type: object
+      required: [name]
+      properties:
+        key:
+          type: string
+          description: Lowercase letters, numbers, dashes. Defaults to the name.
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        priority:
+          type: integer
+          minimum: -1000
+          maximum: 1000
+        isMarketing:
+          type: boolean
+        stopOnInboundMessage:
+          type: boolean
+        stopOnPurchase:
+          type: boolean
+        stopOnDealClosed:
+          type: boolean
+        lane:
+          $ref: "#/components/schemas/SequenceLane"
+          description: Cannot change after anyone has been enrolled.
+    SequenceEnrollment:
+      type: object
+      required:
+        [id, sequenceId, contactId, status, currentStep, enrolledAt, lane]
+      properties:
+        id:
+          type: string
+        sequenceId:
+          type: string
+        contactId:
+          type: string
+        opportunityId:
+          type: string
+          nullable: true
+        lane:
+          $ref: "#/components/schemas/SequenceLane"
+        status:
+          type: string
+          enum: [ACTIVE, PAUSED, STOPPED, COMPLETED]
+        stopReason:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/SequenceStopReason"
+        currentStep:
+          type: integer
+        lastStepAt:
+          type: string
+          format: date-time
+          nullable: true
+        pausedAt:
+          type: string
+          format: date-time
+          nullable: true
+        enrolledAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        sequence:
+          type: object
+          properties:
+            id:
+              type: string
+            key:
+              type: string
+            name:
+              type: string
+            priority:
+              type: integer
+    BulkJob:
+      type: object
+      required:
+        [id, workspaceId, kind, status, total, processed, failed, createdAt]
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        kind:
+          type: string
+          description: attendance_import, sequence_bulk_stop, or sequence_bulk_pause
+        status:
+          type: string
+          enum: [QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED]
+        total:
+          type: integer
+        processed:
+          type: integer
+        failed:
+          type: integer
+        input:
+          description: Validated payload for the job
+        result:
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        createdByMembershipId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+    ContactSequenceState:
+      type: object
+      required: [open, history]
+      properties:
+        open:
+          type: object
+          required: [SALES, CLIENT]
+          properties:
+            SALES:
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/SequenceEnrollment"
+            CLIENT:
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/SequenceEnrollment"
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/SequenceEnrollment"
+        status:
+          deprecated: true
+          description: Use open.SALES.status. Filled from `lane` (default SALES).
+          nullable: true
+          type: string
+        sequenceId:
+          deprecated: true
+          description: Use open.SALES.sequenceId.
+          nullable: true
+          type: string
+        sequenceKey:
+          deprecated: true
+          description: Use open.SALES.sequence.key.
+          nullable: true
+          type: string
+        currentStep:
+          deprecated: true
+          description: Use open.SALES.currentStep.
+          nullable: true
+          type: integer
+        enrollment:
+          deprecated: true
+          description: Use open.SALES.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/SequenceEnrollment"
+    SequenceEnroll:
+      type: object
+      description: Provide sequenceId or sequenceKey.
+      properties:
+        sequenceId:
+          type: string
+        sequenceKey:
+          type: string
+        opportunityId:
+          type: string
+          nullable: true
+    SequenceLaneBody:
+      type: object
+      properties:
+        sequenceId:
+          type: string
+          description: Target this sequence's lane.
+        lane:
+          $ref: "#/components/schemas/SequenceLane"
+          description: Lane when sequenceId is omitted. Defaults to SALES.
+    SequenceStop:
+      type: object
+      properties:
+        reason:
+          default: MANUAL
+          allOf:
+            - $ref: "#/components/schemas/SequenceStopReason"
+        sequenceId:
+          type: string
+          description: Only stop if the open enrollment is in this sequence.
+        lane:
+          $ref: "#/components/schemas/SequenceLane"
+          description: Lane when sequenceId is omitted. Defaults to SALES.
+    SequenceStats:
+      type: object
+      required:
+        [days, active, paused, completed, stopped, completionRate, stopReasons]
+      properties:
+        days:
+          type: integer
+        active:
+          type: integer
+        paused:
+          type: integer
+        completed:
+          type: integer
+        stopped:
+          type: integer
+        completionRate:
+          type: number
+          description: completed / (completed + stopped) in the window.
+        stopReasons:
+          type: array
+          items:
+            type: object
+            required: [reason, count]
+            properties:
+              reason:
+                $ref: "#/components/schemas/SequenceStopReason"
+              count:
+                type: integer
+        topStopReason:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/SequenceStopReason"
+    SequenceEnrollmentBulk:
+      type: object
+      properties:
+        enrollmentIds:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [ACTIVE, PAUSED, STOPPED, COMPLETED]
+        stopReason:
+          $ref: "#/components/schemas/SequenceStopReason"
+        pausedBy:
+          type: string
+        endedSince:
+          type: string
+          format: date-time
+        reason:
+          $ref: "#/components/schemas/SequenceStopReason"
+    Form:
+      type: object
+      required:
+        [id, workspaceId, name, slug, publicSlug, status, showInCommunity]
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        publicSlug:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, PUBLISHED]
+        description:
+          type: string
+        fields:
+          $ref: "#/components/schemas/FormDefinition"
+        settings:
+          type: object
+          description: >
+            Full settings for `FORMS_READ` callers. Callers that only see
+            community forms (`FORMS_SUBMIT` without `FORMS_READ`, which
+            includes every app) get only what
+            rendering needs: `respondent` (confirmation message, submit label,
+            disable after submit), `theme` and `css`. CRM routing (`crm`),
+            `embed` and `publicLink` are left out.
+        showInCommunity:
+          type: boolean
+          description: Visible to community apps. Staff turn it on in the form's settings.
+        submissionCount:
+          type: integer
+    FormDefinition:
+      type: object
+      description: >
+        A form's pages and fields. Answer every field except `section` (a
+        heading) in `MemberFormSubmissionWrite.fields`.
+      required: [sections]
+      properties:
+        sections:
+          type: array
+          description: Pages, in order. 1 to 20; at most 80 fields in total.
+          items:
+            $ref: "#/components/schemas/FormSection"
+    FormSection:
+      type: object
+      required: [id, title, fields]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/FormField"
+    FormField:
+      type: object
+      description: >
+        One field. Answers are keyed by `slug` (or `id`). `options` is set for
+        `select`, `radio` and `multi_select`; only `radio` and `multi_select`
+        options can reveal a follow-up field. `defaultValue` is for `hidden`,
+        `description` for `section`.
+      required: [id, label, type]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+          description: Lowercase answer key; defaults to one derived from `id`.
+        type:
+          type: string
+          enum:
+            [
+              string,
+              email,
+              phone,
+              textarea,
+              number,
+              boolean,
+              hidden,
+              select,
+              radio,
+              multi_select,
+              section,
+            ]
+        label:
+          type: string
+        required:
+          type: boolean
+        placeholder:
+          type: string
+        helperText:
+          type: string
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/FormFieldOption"
+        defaultValue:
+          type: string
+        description:
+          type: string
+    FormFieldOption:
+      type: object
+      required: [value, label]
+      properties:
+        value:
+          type: string
+          description: What to send as the answer.
+        label:
+          type: string
+        reveals:
+          description: >
+            Shown, and answered, only while this option is chosen. Never a
+            `hidden`, `select` or `section` field.
+          allOf:
+            - $ref: "#/components/schemas/FormField"
+    FormAnswerValue:
+      description: One answer; see `MemberFormSubmissionWrite.fields`.
+      oneOf:
+        - type: string
+        - type: number
+        - type: boolean
+        - type: array
+          items:
+            type: string
+        - type: "null"
+    FormWrite:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        slug:
+          type: string
+        publicSlug:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, PUBLISHED]
+        fields:
+          $ref: "#/components/schemas/FormDefinition"
+        settings:
+          type: object
+    FormSubmission:
+      type: object
+      required: [id, formId, source, createdAt]
+      properties:
+        id:
+          type: string
+        formId:
+          type: string
+        source:
+          type: string
+          enum: [HOST, SITE, EMBED]
+        fields:
+          type: object
+        status:
+          type: string
+          enum: [NEW, SPAM]
+        contactId:
+          type: string
+          nullable: true
+        customerId:
+          type: string
+          nullable: true
+        opportunityId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    FormSubmissionPatch:
+      type: object
+      properties:
+        fields:
+          type: object
+          additionalProperties: true
+          description: Merged into stored answers, then validated.
+        status:
+          type: string
+          enum: [NEW, SPAM]
+        contactId:
+          type: string
+          nullable: true
+        customerId:
+          type: string
+          nullable: true
+        opportunityId:
+          type: string
+          nullable: true
+    PipelineStage:
+      type: object
+      required: [id, pipelineId, name, type, rank]
+      properties:
+        id:
+          type: string
+        pipelineId:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+        type:
+          type: string
+          enum: [OPEN, WON, LOST]
+        isNurture:
+          type: boolean
+          description: OPEN stages only. Deals in this stage need a nurtureReason.
+        rank:
+          type: string
+    Pipeline:
+      type: object
+      required: [id, workspaceId, name]
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        name:
+          type: string
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineStage"
+    PipelineWrite:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+    PipelineStageWrite:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        color:
+          type: string
+        type:
+          type: string
+          enum: [OPEN, WON, LOST]
+        isNurture:
+          type: boolean
+    PipelineStagePatch:
+      type: object
+      properties:
+        name:
+          type: string
+        color:
+          type: string
+        type:
+          type: string
+          enum: [OPEN, WON, LOST]
+        isNurture:
+          type: boolean
+    OpportunityCloseReason:
+      type: string
+      nullable: true
+      enum:
+        [
+          NOT_FIT,
+          MINOR_NO_CONSENT,
+          SPAM,
+          DUPLICATE,
+          PRICE,
+          COMPETITOR,
+          NO_RESPONSE,
+          OTHER,
+        ]
+    OpportunityNurtureReason:
+      type: string
+      nullable: true
+      enum: [TIMING, MONEY, DECISION_MAKER, OTHER]
+    Opportunity:
+      type: object
+      required: [id, workspaceId, pipelineId, stageId, contactId, name, rank]
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        pipelineId:
+          type: string
+        stageId:
+          type: string
+        contactId:
+          type: string
+        customerId:
+          type: string
+          nullable: true
+        name:
+          type: string
+        value:
+          type: integer
+          nullable: true
+        currency:
+          type: string
+        ownerMembershipId:
+          type: string
+          nullable: true
+        nextFollowUpAt:
+          type: string
+          format: date-time
+          nullable: true
+        rank:
+          type: string
+        qualFit:
+          type: boolean
+        qualTimeline:
+          type: boolean
+        qualBudget:
+          type: boolean
+        qualDecisionMaker:
+          type: boolean
+        qualAge:
+          type: boolean
+        isQualified:
+          type: boolean
+          description: True when every qualification flag is set.
+        closeReason:
+          $ref: "#/components/schemas/OpportunityCloseReason"
+        closeNote:
+          type: string
+          maxLength: 500
+          nullable: true
+        nurtureReason:
+          $ref: "#/components/schemas/OpportunityNurtureReason"
+          description: Set on nurture stages. Cleared when the deal leaves a nurture stage (including Won and Lost).
+        closedAt:
+          type: string
+          format: date-time
+          nullable: true
+    OpportunityWrite:
+      type: object
+      required: [pipelineId, contactId]
+      properties:
+        pipelineId:
+          type: string
+        contactId:
+          type: string
+        name:
+          type: string
+        stageId:
+          type: string
+        customerId:
+          type: string
+        value:
+          type: integer
+          nullable: true
+        ownerMembershipId:
+          type: string
+        nextFollowUpAt:
+          type: string
+          format: date-time
+          nullable: true
+        qualFit:
+          type: boolean
+        qualTimeline:
+          type: boolean
+        qualBudget:
+          type: boolean
+        qualDecisionMaker:
+          type: boolean
+        qualAge:
+          type: boolean
+        closeReason:
+          $ref: "#/components/schemas/OpportunityCloseReason"
+        closeNote:
+          type: string
+          maxLength: 500
+          nullable: true
+        nurtureReason:
+          $ref: "#/components/schemas/OpportunityNurtureReason"
+    OpportunityPatch:
+      type: object
+      properties:
+        name:
+          type: string
+        contactId:
+          type: string
+        customerId:
+          type: string
+        value:
+          type: integer
+          nullable: true
+        ownerMembershipId:
+          type: string
+        nextFollowUpAt:
+          type: string
+          format: date-time
+          nullable: true
+        stageId:
+          type: string
+        qualFit:
+          type: boolean
+        qualTimeline:
+          type: boolean
+        qualBudget:
+          type: boolean
+        qualDecisionMaker:
+          type: boolean
+        qualAge:
+          type: boolean
+        closeReason:
+          $ref: "#/components/schemas/OpportunityCloseReason"
+        closeNote:
+          type: string
+          maxLength: 500
+          nullable: true
+        nurtureReason:
+          $ref: "#/components/schemas/OpportunityNurtureReason"
+    OpportunityMove:
+      type: object
+      required: [stageId]
+      properties:
+        stageId:
+          type: string
+        beforeOpportunityId:
+          type: string
+          nullable: true
+        afterOpportunityId:
+          type: string
+          nullable: true
+        closeReason:
+          $ref: "#/components/schemas/OpportunityCloseReason"
+        closeNote:
+          type: string
+          maxLength: 500
+          nullable: true
+        nurtureReason:
+          $ref: "#/components/schemas/OpportunityNurtureReason"
+    InvoiceCustomer:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        imageObjectKey:
+          type: string
+          nullable: true
+    InvoiceItem:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        quantity:
+          type: number
+        unitPrice:
+          type: integer
+    InvoiceTax:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        percentage:
+          type: number
+    Invoice:
+      type: object
+      required: [id, title, amount, createdAt]
+      properties:
+        id:
+          type: string
+        invoiceNumber:
+          type: string
+          nullable: true
+        title:
+          type: string
+        memo:
+          type: string
+          nullable: true
+        amount:
+          type: integer
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [draft, pending, paid, overdue]
+        issuedAt:
+          type: string
+          format: date-time
+          nullable: true
+        dueAt:
+          type: string
+          format: date-time
+          nullable: true
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        customer:
+          $ref: "#/components/schemas/InvoiceCustomer"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceItem"
+        taxes:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceTax"
+    InvoiceWrite:
+      type: object
+      properties:
+        customerId:
+          type: string
+        title:
+          type: string
+        memo:
+          type: string
+          nullable: true
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              quantity:
+                type: number
+              unitPrice:
+                type: integer
+        taxes:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              percentage:
+                type: number
+    PaymentCustomer:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        company:
+          type: string
+          nullable: true
+    Payment:
+      type: object
+      required: [id, amount, status, createdAt]
+      properties:
+        id:
+          type: string
+        amount:
+          type: integer
+        status:
+          type: string
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        invoiceId:
+          type: string
+          nullable: true
+        currency:
+          type: string
+          nullable: true
+        source:
+          $ref: "#/components/schemas/PaymentSource"
+        sourceLabel:
+          type: string
+          nullable: true
+        externalRef:
+          type: string
+          nullable: true
+        contactId:
+          type: string
+          nullable: true
+        opportunityId:
+          type: string
+          nullable: true
+        items:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/PaymentItem"
+        metaEventId:
+          type: string
+          nullable: true
+        metaSend:
+          type: boolean
+        reversedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        customer:
+          $ref: "#/components/schemas/PaymentCustomer"
+        invoice:
+          type: object
+          properties:
+            id:
+              type: string
+            invoiceNumber:
+              type: string
+              nullable: true
+        metaConversion:
+          $ref: "#/components/schemas/MetaConversion"
+          nullable: true
+    PaymentSource:
+      type: string
+      enum:
+        [INVOICE, MANUAL, STRIPE, XENDIT, RECEIPT, API, WORKFLOW, MCP, IMPORT]
+    PaymentItem:
+      type: object
+      required: [name, quantity, unitAmount]
+      properties:
+        name:
+          type: string
+        sku:
+          type: string
+        quantity:
+          type: integer
+        unitAmount:
+          type: integer
+          description: Minor units
+    PurchaseWrite:
+      type: object
+      required: [externalRef, amount, buyer]
+      properties:
+        externalRef:
+          type: string
+        amount:
+          type: integer
+          description: Integer minor units
+        currency:
+          type: string
+        paidAt:
+          type: string
+          format: date-time
+        sourceLabel:
+          type: string
+        opportunityId:
+          type: string
+        invoiceId:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentItem"
+        note:
+          type: string
+        buyer:
+          type: object
+          properties:
+            email:
+              type: string
+            phone:
+              type: string
+            name:
+              type: string
+            contactId:
+              type: string
+            customerId:
+              type: string
+        siteVisit:
+          type: object
+          description: The `pw_site` / `pw_vid` values your app received from a linked-domain link. Verified against the site's pageviews in this workspace; an unverifiable visit never fails the purchase.
+          required: [siteId, visitorId]
+          properties:
+            siteId:
+              type: string
+              description: "`pw_site`"
+            visitorId:
+              type: string
+              description: "`pw_vid` (UUID)"
+        meta:
+          type: object
+          properties:
+            send:
+              type: boolean
+            eventId:
+              type: string
+            fbp:
+              type: string
+            fbc:
+              type: string
+            clientUserAgent:
+              type: string
+            eventSourceUrl:
+              type: string
+    MetaConversionStatus:
+      type: string
+      enum: [QUEUED, SENT, FAILED, SKIPPED, EXPORT_ONLY]
+    MetaConversion:
+      type: object
+      required:
+        [id, paymentId, eventName, eventId, value, currency, eventTime, status]
+      properties:
+        id:
+          type: string
+        siteId:
+          type: string
+          nullable: true
+        paymentId:
+          type: string
+        eventName:
+          type: string
+        eventId:
+          type: string
+        contactId:
+          type: string
+          nullable: true
+        value:
+          type: integer
+        currency:
+          type: string
+        eventTime:
+          type: string
+          format: date-time
+        status:
+          $ref: "#/components/schemas/MetaConversionStatus"
+        skipReason:
+          type: string
+          nullable: true
+        reversed:
+          type: boolean
+        attempts:
+          type: integer
+        lastError:
+          type: string
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        exportedAt:
+          type: string
+          format: date-time
+          nullable: true
+    PaymentWrite:
+      type: object
+      properties:
+        customerId:
+          type: string
+        amount:
+          type: integer
+        status:
+          type: string
+        note:
+          type: string
+          nullable: true
+        invoiceId:
+          type: string
+          nullable: true
+    Channel:
+      type: object
+      required: [id, workspaceId, name, slug, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        categoryId:
+          type: string
+          nullable: true
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+          nullable: true
+        type:
+          type: string
+        visibility:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ChannelWrite:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        categoryId:
+          type: string
+          nullable: true
+    CommunityMember:
+      type: object
+      required:
+        [
+          id,
+          customerId,
+          username,
+          displayName,
+          avatarUrl,
+          status,
+          accessPlans,
+          roles,
+          badges,
+          joinedAt,
+        ]
+      properties:
+        id:
+          type: string
+          description: Community membership id
+        customerId:
+          type: string
+        username:
+          type: string
+          nullable: true
+        displayName:
+          type: string
+          description: Profile name, else customer name, else username
+        avatarUrl:
+          type: string
+          nullable: true
+          description: >
+            Signed storage URL for the member's avatar, valid for up to about
+            1 hour. Fetch or proxy it right away; don't store it. Call the API
+            again for a fresh URL. Null when the member has no avatar.
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED, REVOKED]
+        accessPlans:
+          type: array
+          description: Product plans with an active subscription that grant community access
+          items:
+            $ref: "#/components/schemas/CommunityNamedRef"
+        roles:
+          type: array
+          description: Workspace roles used for channel permissions (staff only; empty for regular members)
+          items:
+            $ref: "#/components/schemas/CommunityNamedRef"
+        badges:
+          type: array
+          description: >
+            Badges the member holds from apps with an active installation in
+            this workspace, newest award first. Uninstalled apps' badges are
+            hidden, not deleted.
+          items:
+            $ref: "#/components/schemas/CommunityMemberBadge"
+        joinedAt:
+          type: string
+          format: date-time
+    CommunityNamedRef:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    CommunityAppMessageWrite:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        replyToId:
+          type: string
+    CommunityAppMessage:
+      type: object
+      required: [id, channelId, body, replyToId, createdAt, author]
+      properties:
+        id:
+          type: string
+        channelId:
+          type: string
+        body:
+          type: string
+        replyToId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        author:
+          type: object
+          required: [kind, installationId, name]
+          properties:
+            kind:
+              type: string
+              enum: [app]
+            installationId:
+              type: string
+            name:
+              type: string
+    Message:
+      type: object
+      required: [id, workspaceId, channelId, body, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        channelId:
+          type: string
+        body:
+          type: string
+        authorNameSnapshot:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        editedAt:
+          type: string
+          format: date-time
+          nullable: true
+    MessageWrite:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+    EmbedProjectStatus:
+      type: object
+      required: [id, name, type, rank]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [TODO, IN_PROGRESS, DONE]
+        rank:
+          type: string
+    EmbedProject:
+      type: object
+      required: [id, name, statuses]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        statuses:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmbedProjectStatus"
+    EmbedUser:
+      type: object
+      required: [id, externalUserId]
+      properties:
+        id:
+          type: string
+        externalUserId:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+    EmbedSessionWrite:
+      type: object
+      required: [externalUserId]
+      properties:
+        externalUserId:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+    EmbedSession:
+      type: object
+      required: [token, embedUrl, expiresAt]
+      properties:
+        token:
+          type: string
+        embedUrl:
+          type: string
+          format: uri
+        expiresAt:
+          type: string
+          format: date-time
+    Site:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+          description: "`{slug}.planeward.site`"
+        language:
+          type: string
+        url:
+          type: string
+          nullable: true
+          description: Live URL on the primary domain, or null when unpublished
+        theme:
+          $ref: "#/components/schemas/SiteTheme"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SiteTheme:
+      type: object
+      description: Colors, fonts, icon, and searchEngines. Unknown keys are dropped.
+      properties:
+        background:
+          type: string
+        foreground:
+          type: string
+        primary:
+          type: string
+        primaryForeground:
+          type: string
+        muted:
+          type: string
+        surface:
+          type: string
+        border:
+          type: string
+        dark:
+          type: object
+          nullable: true
+          description: Dark palette with all seven tokens. null removes it.
+          required:
+            [
+              background,
+              foreground,
+              primary,
+              primaryForeground,
+              muted,
+              surface,
+              border,
+            ]
+          properties:
+            background:
+              type: string
+            foreground:
+              type: string
+            primary:
+              type: string
+            primaryForeground:
+              type: string
+            muted:
+              type: string
+            surface:
+              type: string
+            border:
+              type: string
+        defaultMode:
+          type: string
+          enum: [light, dark, system]
+          default: light
+        fontFamily:
+          type: string
+        searchEngines:
+          type: object
+          properties:
+            index:
+              type: boolean
+            follow:
+              type: boolean
+    SiteWrite:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+          maxLength: 80
+        slug:
+          type: string
+          minLength: 2
+          maxLength: 48
+    SitePatch:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 80
+        slug:
+          type: string
+          minLength: 2
+          maxLength: 48
+        language:
+          type: string
+          maxLength: 16
+        theme:
+          $ref: "#/components/schemas/SiteTheme"
+    SiteVersion:
+      type: object
+      properties:
+        id:
+          type: string
+        number:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    SitePageKind:
+      type: string
+      enum: [PAGE, HEADER, FOOTER, TEMPLATE]
+    SitePageSeo:
+      type: object
+      nullable: true
+      properties:
+        title:
+          type: string
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 240
+        ogImage:
+          type: string
+          description: "`/media/{assetId}`"
+        noindex:
+          type: boolean
+        schemaType:
+          type: string
+          enum: [WebPage, Article, AboutPage, ContactPage, CollectionPage]
+          default: WebPage
+          description: schema.org type of the page node
+        publishedAt:
+          type: string
+          description: Article publish date (date or ISO datetime). Used as datePublished
+    SitePage:
+      type: object
+      required: [id, title, slug, kind]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        slug:
+          type: string
+        kind:
+          $ref: "#/components/schemas/SitePageKind"
+        hidden:
+          type: boolean
+        hideHeader:
+          type: boolean
+          default: false
+          description: Hide the site header on this page
+        hideFooter:
+          type: boolean
+          default: false
+          description: Hide the site footer on this page
+        seo:
+          $ref: "#/components/schemas/SitePageSeo"
+        contentVersion:
+          type: integer
+        body:
+          description: Draft body SiteElement tree (get only). See MCP `planeward-site-page-body-schema`.
+        updatedAt:
+          type: string
+          format: date-time
+    SitePageWrite:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 160
+        slug:
+          type: string
+          maxLength: 80
+        hideHeader:
+          type: boolean
+        hideFooter:
+          type: boolean
+    SitePagePatch:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 160
+        slug:
+          type: string
+          maxLength: 80
+        hidden:
+          type: boolean
+        hideHeader:
+          type: boolean
+        hideFooter:
+          type: boolean
+        seo:
+          $ref: "#/components/schemas/SitePageSeo"
+        expectedContentVersion:
+          type: integer
+          minimum: 0
+        body:
+          description: Complete body SiteElement tree
+    CollectionFieldType:
+      type: string
+      enum:
+        [
+          text,
+          richText,
+          image,
+          number,
+          boolean,
+          date,
+          url,
+          select,
+          reference,
+          multiReference,
+          list,
+        ]
+    CollectionField:
+      type: object
+      required: [key, label, type]
+      properties:
+        key:
+          type: string
+          pattern: "^[a-z][a-zA-Z0-9_]{0,39}$"
+          description: Not name, slug, seo, id, or url
+        label:
+          type: string
+          maxLength: 80
+        type:
+          $ref: "#/components/schemas/CollectionFieldType"
+        required:
+          type: boolean
+        helpText:
+          type: string
+          maxLength: 200
+        options:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+          description: Required for select
+        referenceCollectionId:
+          type: string
+          description: Required for reference and multiReference
+        itemFields:
+          type: array
+          minItems: 1
+          maxItems: 8
+          description: Required for list. Each row is an object keyed by sub-field key; up to 50 rows.
+          items:
+            type: object
+            required: [key, label, type]
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              type:
+                type: string
+                enum: [text, richText]
+    CollectionJsonLd:
+      type: object
+      nullable: true
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [DefinedTerm, SoftwareApplication, Article, Product]
+        map:
+          type: object
+          description: schema.org property → field path
+          additionalProperties:
+            type: string
+    SiteCollection:
+      type: object
+      required: [id, name, slug, fields]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+          description: URL prefix. Items live at `/{slug}/{itemSlug}`
+        templatePageId:
+          type: string
+          nullable: true
+        fields:
+          type: array
+          maxItems: 30
+          items:
+            $ref: "#/components/schemas/CollectionField"
+        jsonLd:
+          $ref: "#/components/schemas/CollectionJsonLd"
+        itemCount:
+          type: integer
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SiteCollectionWrite:
+      type: object
+      required: [name, slug, fields]
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        slug:
+          type: string
+          maxLength: 80
+        fields:
+          type: array
+          maxItems: 30
+          items:
+            $ref: "#/components/schemas/CollectionField"
+        jsonLd:
+          $ref: "#/components/schemas/CollectionJsonLd"
+    SiteCollectionPatch:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        slug:
+          type: string
+          maxLength: 80
+        fields:
+          type: array
+          maxItems: 30
+          items:
+            $ref: "#/components/schemas/CollectionField"
+        jsonLd:
+          $ref: "#/components/schemas/CollectionJsonLd"
+    CollectionItemStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED, ARCHIVED]
+    CollectionItemData:
+      type: object
+      required: [name]
+      description: "`name` plus one key per collection field. Reference fields take item ids or slugs in the target collection. Unknown keys are dropped."
+      properties:
+        name:
+          type: string
+          maxLength: 200
+      additionalProperties: true
+    CollectionEntry:
+      type: object
+      required: [id, collectionId, slug, status, name, data, contentVersion]
+      properties:
+        id:
+          type: string
+        collectionId:
+          type: string
+        slug:
+          type: string
+        status:
+          $ref: "#/components/schemas/CollectionItemStatus"
+        name:
+          type: string
+        data:
+          $ref: "#/components/schemas/CollectionItemData"
+        seo:
+          $ref: "#/components/schemas/SitePageSeo"
+        publishedSlug:
+          type: string
+          nullable: true
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        hasUnpublishedChanges:
+          type: boolean
+        sortOrder:
+          type: integer
+        contentVersion:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CollectionEntryWrite:
+      type: object
+      required: [slug, data]
+      properties:
+        slug:
+          type: string
+          maxLength: 80
+        data:
+          $ref: "#/components/schemas/CollectionItemData"
+        seo:
+          $ref: "#/components/schemas/SitePageSeo"
+        status:
+          type: string
+          enum: [DRAFT, ARCHIVED]
+        publish:
+          type: boolean
+          description: Also put the saved draft live
+    CollectionEntryPatch:
+      type: object
+      properties:
+        slug:
+          type: string
+          maxLength: 80
+        data:
+          $ref: "#/components/schemas/CollectionItemData"
+        seo:
+          $ref: "#/components/schemas/SitePageSeo"
+        status:
+          type: string
+          enum: [DRAFT, ARCHIVED]
+        expectedContentVersion:
+          type: integer
+          minimum: 0
+        publish:
+          type: boolean
+          description: Also put the saved draft live
+    CollectionItemIds:
+      type: object
+      required: [itemIds]
+      properties:
+        itemIds:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: string
+    CollectionUpsertRow:
+      type: object
+      required: [slug, data]
+      properties:
+        slug:
+          type: string
+        data:
+          $ref: "#/components/schemas/CollectionItemData"
+        seo:
+          $ref: "#/components/schemas/SitePageSeo"
+    CollectionUpsertResult:
+      oneOf:
+        - type: object
+          required: [kind, created, updated, failed]
+          properties:
+            kind:
+              type: string
+              enum: [inline]
+            created:
+              type: integer
+            updated:
+              type: integer
+            failed:
+              type: array
+              items:
+                type: object
+                properties:
+                  row:
+                    type: integer
+                  slug:
+                    type: string
+                  message:
+                    type: string
+        - type: object
+          required: [kind, jobId]
+          properties:
+            kind:
+              type: string
+              enum: [job]
+            jobId:
+              type: string
+  responses:
+    Forbidden:
+      description: >
+        Missing scope (`missingScope` names it), not an app caller where one
+        is required, the module is disabled, or a localhost app called for an
+        installation outside its own workspace
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ForbiddenError"
+    MemberNotActive:
+      description: The member is suspended or revoked
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    MemberContactConflict:
+      description: >
+        `Member is not active.` (suspended or revoked), or `Member has no
+        primary contact.`: the member's customer has no email and already has
+        contacts, so none can be picked as the primary contact. Staff set the
+        customer's email or primary contact in the CRM.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadRequest:
+      description: >
+        `Invalid JSON body.`, a body or query that fails validation (a
+        readable message naming the field), neither or both of `memberId` and
+        `contactId`, or `contactId` from an app caller
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InvalidWriteBody:
+      description: >
+        Malformed JSON (`{ "error": "Invalid JSON body." }`), or a body that
+        fails validation (`ValidationErrorTree`)
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/Error"
+              - $ref: "#/components/schemas/ValidationErrorTree"
+    CommunityChannelList:
+      description: Channels `@everyone` can view
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommunityChannel"
+    CommunityMessagePage:
+      description: A page of messages, newest first
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommunityMessage"
+              meta:
+                $ref: "#/components/schemas/CursorMeta"
+    CommunityCourseList:
+      description: Paginated published courses
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommunityCourseSummary"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    CommunityCourseItem:
+      description: A published course with its outline
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/CommunityCourse"
+    CommunityModuleProgressList:
+      description: The member's module progress
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommunityModuleProgress"
+    CommunityModuleProgressItem:
+      description: The member's progress on the module
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/CommunityModuleProgress"
+    CommunityBadgeList:
+      description: The app's badges in this workspace
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommunityBadge"
+    CommunityBadgeItem:
+      description: A badge
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/CommunityBadge"
+    CommunityMemberBadgeItem:
+      description: The member's award of the badge
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/CommunityMemberBadge"
+    SequenceItem:
+      description: A sequence
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Sequence"
+    BulkJobItem:
+      description: A bulk job
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/BulkJob"
+    EventItem:
+      description: An event
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Event"
+    EventRegistrationItem:
+      description: A registration
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/EventRegistration"
+    EventRegistrationResult:
+      description: The registration and whether it is new
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: object
+                required: [registration, created]
+                properties:
+                  registration:
+                    $ref: "#/components/schemas/EventRegistration"
+                  created:
+                    type: boolean
+    EmbedProjectList:
+      description: An embed user's projects and statuses
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, embedUser, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EmbedProject"
+              embedUser:
+                nullable: true
+                allOf:
+                  - $ref: "#/components/schemas/EmbedUser"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    EmbedSessionItem:
+      description: A minted embed session
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/EmbedSession"
+    ProjectList:
+      description: Paginated projects
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    ProjectItem:
+      description: A project
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Project"
+    TaskList:
+      description: Paginated tasks
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    ProjectLabelList:
+      description: Paginated project labels
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectLabel"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    TaskItem:
+      description: A task
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Task"
+    CustomerList:
+      description: Paginated customers
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Customer"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    CustomerItem:
+      description: A customer
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Customer"
+    ContactList:
+      description: Paginated contacts
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contact"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    ContactItem:
+      description: A contact
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Contact"
+    FormList:
+      description: Paginated forms
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Form"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    FormItem:
+      description: A form
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Form"
+    FormGenerate:
+      description: Generated form definition
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: object
+                required: [fields]
+                properties:
+                  fields:
+                    $ref: "#/components/schemas/FormDefinition"
+                  form:
+                    $ref: "#/components/schemas/Form"
+    FormSubmissionList:
+      description: Paginated form submissions
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FormSubmission"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    FormSubmissionItem:
+      description: A form submission
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/FormSubmission"
+    PipelineList:
+      description: Pipelines
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pipeline"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    PipelineItem:
+      description: A pipeline
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Pipeline"
+    PipelineStageList:
+      description: Pipeline stages
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PipelineStage"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    PipelineStageItem:
+      description: A pipeline stage
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/PipelineStage"
+    OpportunityList:
+      description: Paginated opportunities
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Opportunity"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    OpportunityItem:
+      description: An opportunity
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Opportunity"
+    InvoiceList:
+      description: Paginated invoices
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Invoice"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    InvoiceItem:
+      description: An invoice
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Invoice"
+    PaymentList:
+      description: Paginated payments
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Payment"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    PaymentItem:
+      description: A payment
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Payment"
+    PurchaseItem:
+      description: Recorded or already-recorded purchase
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: object
+                required: [status, payment]
+                properties:
+                  status:
+                    type: string
+                    enum: [recorded, already_recorded]
+                  warning:
+                    type: string
+                    enum: [amount_mismatch]
+                  payment:
+                    $ref: "#/components/schemas/Payment"
+                  siteVisit:
+                    description: Present when `siteVisit` was sent
+                    oneOf:
+                      - type: object
+                        required: [credited, siteId]
+                        properties:
+                          credited:
+                            type: boolean
+                            enum: [true]
+                          siteId:
+                            type: string
+                      - type: object
+                        required: [credited, reason]
+                        properties:
+                          credited:
+                            type: boolean
+                            enum: [false]
+                          reason:
+                            type: string
+                            enum: [invalid, not_found]
+    MetaConversionList:
+      description: Paginated Meta conversions
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MetaConversion"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    MetaConversionItem:
+      description: A Meta conversion
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/MetaConversion"
+    ChannelList:
+      description: Paginated channels
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Channel"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    ChannelItem:
+      description: A channel
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Channel"
+    MessageList:
+      description: Paginated messages
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    MessageItem:
+      description: A message
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Message"
+    CommunityMemberList:
+      description: Paginated community members
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommunityMember"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    CommunityMemberItem:
+      description: A community member
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/CommunityMember"
+    CommunityAppMessageItem:
+      description: The message posted as the app
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/CommunityAppMessage"
+    SiteList:
+      description: Paginated sites
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Site"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    SiteItem:
+      description: A site
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Site"
+    SitePageList:
+      description: Pages in site order
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SitePage"
+    SitePageItem:
+      description: A page
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/SitePage"
+    SiteCollectionList:
+      description: Collections on a site
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SiteCollection"
+    SiteCollectionItem:
+      description: A collection
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/SiteCollection"
+    CollectionEntryList:
+      description: Paginated collection items
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CollectionEntry"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    CollectionEntryItem:
+      description: A collection item
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/CollectionEntry"
+    CollectionDeleteResult:
+      description: Items deleted and reference values cleared
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: object
+                properties:
+                  deleted:
+                    type: integer
+                  referencesCleared:
+                    type: integer

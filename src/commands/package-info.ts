@@ -42,7 +42,10 @@ export function packageVersion(): string {
   return json.version ?? "0.0.0";
 }
 
-/** Absolute path of the shipped `planeward.json` JSON Schema. */
-export function manifestSchemaFile(): string {
-  return join(packageRoot(), MANIFEST_SCHEMA_PATH);
+/**
+ * URL of the `planeward.json` JSON Schema shipped with this version, served
+ * from npm by unpkg. Written to `$schema` by `planeward init`.
+ */
+export function manifestSchemaUrl(version = packageVersion()): string {
+  return `https://unpkg.com/planeward@${version}/${MANIFEST_SCHEMA_PATH}`;
 }

@@ -304,7 +304,7 @@ describe("emulator", () => {
     );
   });
 
-  it("answers every SDK client method with responses that match v1.yaml", async () => {
+  it("answers every SDK client method with responses that match the OpenAPI spec", async () => {
     const check = (
       method: string,
       path: string,

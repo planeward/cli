@@ -5,27 +5,41 @@ emulator of the Planeward host, the v1 API and app webhooks on `127.0.0.1`,
 starts your app's dev server with the `PLANEWARD_*` variables pointing at it,
 and opens the emulator in your browser.
 
-This package isn't published. Link it from this checkout.
-
-## Install
-
-```bash
-cd ~/workspaces/planeward/cli
-pnpm install
-pnpm build && pnpm link --global
-planeward --version
-```
-
-Run `pnpm build` again after pulling changes. The link points at this
-folder's `dist/`.
+It needs Node.js 24 or later.
 
 ## Quick start
 
+Run it without installing:
+
 ```bash
-cd my-app            # the folder with your app's package.json
-planeward init       # writes planeward.json
-planeward dev        # emulator + your dev server
+cd my-app                        # the folder with your app's package.json
+pnpx planeward@latest init       # writes planeward.json
+pnpx planeward@latest dev        # emulator + your dev server
 ```
+
+`npx planeward@latest init` and `npx planeward@latest dev` work the same way.
+
+## Install
+
+To pin the version, add it to your app as a dev dependency:
+
+```bash
+pnpm add -D planeward    # or: npm install -D planeward
+```
+
+Then add a script to your app's `package.json`. Keep `dev` as the command
+that starts your app, because `planeward dev` runs it:
+
+```json
+{
+  "scripts": {
+    "dev": "next dev --port 3005",
+    "dev:emulator": "planeward dev"
+  }
+}
+```
+
+Run `pnpm dev:emulator` to start the emulator and your app together.
 
 ## `planeward.json`
 
@@ -34,11 +48,13 @@ parent folder, up to the git root (the first folder with `.git`) or your home
 folder, whichever comes first. A manifest found in a parent folder is named,
 and `planeward dev` asks before running its `dev.command`. Without a
 terminal to ask in, pass `--manifest <path>` or `--no-app`. Its JSON Schema ships in this package at
-`schema/planeward.schema.json`, and `planeward init` points `$schema` at it.
+`schema/planeward.schema.json`. `planeward init` points `$schema` at that
+file on unpkg for the installed version, for example
+`https://unpkg.com/planeward@0.1.0/schema/planeward.schema.json`.
 
 | Field            | Required | Description                                                                                    |
 | ---------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `$schema`        | no       | Path to `schema/planeward.schema.json`, for editor validation.                                 |
+| `$schema`        | no       | URL or path of `schema/planeward.schema.json`, for editor validation.                          |
 | `name`           | yes      | Display name in the emulator (1–80 characters).                                                |
 | `slug`           | yes      | 2–48 lowercase letters, digits or dashes. The local app id is `<slug>-local`.                  |
 | `experiencePath` | yes      | Path on `dev.url` shown in the Experience view, e.g. `/experience`.                            |
@@ -55,7 +71,7 @@ App-grantable scopes: `COMMUNITY_MEMBERS_READ`, `COMMUNITY_MESSAGES_READ`,
 
 ```json
 {
-  "$schema": "../../cli/schema/planeward.schema.json",
+  "$schema": "https://unpkg.com/planeward@0.1.0/schema/planeward.schema.json",
   "name": "Leaderboard",
   "slug": "leaderboard",
   "experiencePath": "/experience",
@@ -202,8 +218,8 @@ overwrites an existing one. It fills the fields like this:
   `https`.
 - The paths are `/experience`, `/dashboard` and `/api/webhooks/planeward`.
 - `scopes` is `["COMMUNITY_MEMBERS_READ"]`.
-- `$schema` is the path of this package's schema. It's relative when the app
-  and this checkout share a parent folder, and absolute otherwise.
+- `$schema` is the unpkg URL of the schema for the running version:
+  `https://unpkg.com/planeward@<version>/schema/planeward.schema.json`.
 
 The command shows the manifest and asks before writing it. Pass `--yes` to
 skip the question.
@@ -303,16 +319,51 @@ also pass `--help` to any command.
   can't be framed (`X-Frame-Options: DENY`,
   `frame-ancestors 'none'`).
 
-## Development
+## Developing the CLI
+
+The CLI depends on `@planeward/sdk`. While the sdk version it needs isn't on
+npm yet, `pnpm-workspace.yaml` overrides it with a link to a sibling checkout
+at `../sdk`, so clone both repos side by side and build the sdk first:
+
+```bash
+cd ../sdk && pnpm install && pnpm build && cd ../cli
+pnpm install
+pnpm build       # dist/bin.js + dist/ui
+```
+
+When the override isn't there, `pnpm install` takes the sdk from npm.
 
 ```bash
 pnpm typecheck
 pnpm lint
 pnpm test        # tsx --test
-pnpm build       # dist/bin.js + dist/ui
+pnpm format:check
 ```
+
+To use your build in an app, run `pnpm link --global` here, then
+`planeward dev` in the app folder. Run `pnpm build` again after pulling
+changes; the link points at this folder's `dist/`.
 
 `pnpm dev:ui` serves the host UI from Vite on `http://127.0.0.1:4601` and
 proxies to an emulator on port 4600. Start that emulator with
 `PLANEWARD_EMULATOR_DEV_UI=1 planeward dev` so its `/__emulator` routes
 accept the Vite origin.
+
+The emulator tests check mock API responses against the Planeward OpenAPI
+spec in `fixtures/openapi.yaml`. Refresh it with `pnpm update-openapi`. It reads `PLANEWARD_OPENAPI`
+(a path or URL), then `../../workbench/apps/docs/openapi/v1.yaml`, then
+`https://docs.planeward.com/openapi.json`. `pnpm update-openapi --check`
+only compares the source with the fixture and exits 1 when they differ.
+
+## Releasing
+
+1. On `main`, run `pnpm release` (or `pnpm release patch|minor|major`). bumpp updates `package.json`, commits `chore(release): vX.Y.Z` and creates the tag `vX.Y.Z`.
+2. Push the commit and tag: `git push --follow-tags`.
+
+The `Release` workflow (`.github/workflows/release.yml`) runs on that tag in the `Release` environment. It checks that the tag matches `package.json`, builds, typechecks, tests, lints, publishes to npm with trusted publishing (OIDC, with provenance), creates a GitHub release and moves the `latest` tag to the released commit. No npm token is stored in the repo. To retry a failed release, re-run the workflow run.
+
+To check a release locally: `pnpm build && pnpm test && pnpm pack --dry-run`.
+
+## License
+
+MIT

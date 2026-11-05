@@ -1,2 +1,3 @@
 dist
 pnpm-lock.yaml
+fixtures/openapi.yaml

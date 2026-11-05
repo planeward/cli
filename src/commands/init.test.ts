@@ -5,17 +5,12 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 
 import { CliError } from "./errors";
-import {
-  inferManifest,
-  portFromScript,
-  runInit,
-  schemaRef,
-  slugify,
-} from "./init";
+import { inferManifest, portFromScript, runInit, slugify } from "./init";
 import { validateManifest } from "./manifest-file";
+import { manifestSchemaUrl, packageVersion } from "./package-info";
 import { captureOutput, tempDir } from "./test-support";
 
-const SCHEMA = "/opt/planeward/cli/schema/planeward.schema.json";
+const SCHEMA = "https://unpkg.com/planeward@1.2.3/schema/planeward.schema.json";
 
 describe("planeward init", () => {
   let root: string;
@@ -41,7 +36,7 @@ describe("planeward init", () => {
     const { manifest, notes } = inferManifest(dir, SCHEMA);
     assert.deepEqual(notes, []);
     assert.deepEqual(manifest, {
-      $schema: schemaRef(dir, SCHEMA),
+      $schema: SCHEMA,
       name: "Leader Board",
       slug: "leader-board",
       experiencePath: "/experience",
@@ -86,16 +81,14 @@ describe("planeward init", () => {
     assert.equal(portFromScript("PORT=4000 node server.js"), 4000);
     assert.equal(portFromScript("next dev"), null);
     assert.equal(slugify("My_Cool App!!"), "my-cool-app");
+  });
+
+  it("points $schema at this version's schema on unpkg", async () => {
+    assert.equal(manifestSchemaUrl("1.2.3"), SCHEMA);
+    const dir = await appDir("schema", { name: "schema-app" });
     assert.equal(
-      schemaRef("/a/b/c/app", "/a/b/cli/schema/planeward.schema.json"),
-      "../../cli/schema/planeward.schema.json"
-    );
-    assert.equal(
-      schemaRef(
-        "/private/tmp/app",
-        "/Users/me/cli/schema/planeward.schema.json"
-      ),
-      "/Users/me/cli/schema/planeward.schema.json"
+      inferManifest(dir).manifest.$schema,
+      `https://unpkg.com/planeward@${packageVersion()}/schema/planeward.schema.json`
     );
   });
 
@@ -108,7 +101,7 @@ describe("planeward init", () => {
     assert.equal(
       await runInit(
         { yes: true, help: false },
-        { cwd: dir, output, schemaFile: SCHEMA }
+        { cwd: dir, output, schemaUrl: SCHEMA }
       ),
       0
     );
@@ -121,7 +114,7 @@ describe("planeward init", () => {
     await assert.rejects(
       runInit(
         { yes: true, help: false },
-        { cwd: dir, output, schemaFile: SCHEMA }
+        { cwd: dir, output, schemaUrl: SCHEMA }
       ),
       (error: unknown) =>
         error instanceof CliError && /already exists/.test(error.message)
@@ -139,7 +132,7 @@ describe("planeward init", () => {
       {
         cwd: dir,
         output: captureOutput(),
-        schemaFile: SCHEMA,
+        schemaUrl: SCHEMA,
         confirm: async (question) => {
           questions.push(question);
           return false;
