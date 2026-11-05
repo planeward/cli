@@ -55,8 +55,18 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # Skips when this version is already on npm (e.g. the first release,
+      # published by hand before the trusted publisher existed), so the tag
+      # still gets its GitHub release and moves `latest`.
       - name: Publish to npm
-        run: pnpm publish --no-git-checks --access public
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$NAME@$VERSION is already on npm; skipping publish."
+          else
+            pnpm publish --no-git-checks --access public
+          fi
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3

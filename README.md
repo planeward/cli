@@ -360,7 +360,7 @@ only compares the source with the fixture and exits 1 when they differ.
 1. On `main`, run `pnpm release` (or `pnpm release patch|minor|major`). bumpp updates `package.json`, commits `chore(release): vX.Y.Z` and creates the tag `vX.Y.Z`.
 2. Push the commit and tag: `git push --follow-tags`.
 
-The `Release` workflow (`.github/workflows/release.yml`) runs on that tag in the `Release` environment. It checks that the tag matches `package.json`, builds, typechecks, tests, lints, publishes to npm with trusted publishing (OIDC, with provenance), creates a GitHub release and moves the `latest` tag to the released commit. No npm token is stored in the repo. To retry a failed release, re-run the workflow run.
+The `Release` workflow (`.github/workflows/release.yml`) runs on that tag in the `Release` environment. It checks that the tag matches `package.json`, builds, typechecks, tests, lints, publishes to npm with trusted publishing (OIDC, with provenance), creates a GitHub release and moves the `latest` tag to the released commit. No npm token is stored in the repo. If that version is already on npm, the publish step is skipped and the release and `latest` tag are still created, so re-running a failed release is safe.
 
 To check a release locally: `pnpm build && pnpm test && pnpm pack --dry-run`.
 
