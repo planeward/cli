@@ -1,9 +1,15 @@
 # planeward
 
-Local-only CLI for building Planeward community apps. `planeward dev` runs an
-emulator of the Planeward host, the v1 API and app webhooks on `127.0.0.1`,
+CLI for building Planeward community apps on your machine. `planeward dev` runs
+an emulator of the Planeward host, the v1 API and app webhooks on `127.0.0.1`,
 starts your app's dev server with the `PLANEWARD_*` variables pointing at it,
-and opens the emulator in your browser.
+and opens the emulator in your browser. No Planeward account, tunnel or
+public URL is needed.
+
+The emulator is built on [`@planeward/sdk`](https://www.npmjs.com/package/@planeward/sdk)
+(0.2.1 or later), the same package your app uses, so tokens it mints pass
+`verifyPlanewardToken`, its webhooks pass `verifyPlanewardWebhook`, and every
+`createPlanewardClient` method works against it unchanged.
 
 It needs Node.js 24 or later.
 
@@ -50,7 +56,7 @@ and `planeward dev` asks before running its `dev.command`. Without a
 terminal to ask in, pass `--manifest <path>` or `--no-app`. Its JSON Schema ships in this package at
 `schema/planeward.schema.json`. `planeward init` points `$schema` at that
 file on unpkg for the installed version, for example
-`https://unpkg.com/planeward@0.1.0/schema/planeward.schema.json`.
+`https://unpkg.com/planeward@0.1.1/schema/planeward.schema.json`.
 
 | Field            | Required | Description                                                                                    |
 | ---------------- | -------- | ---------------------------------------------------------------------------------------------- |
@@ -321,24 +327,23 @@ also pass `--help` to any command.
 
 ## Developing the CLI
 
-The CLI depends on `@planeward/sdk`. While the sdk version it needs isn't on
-npm yet, `pnpm-workspace.yaml` overrides it with a link to a sibling checkout
-at `../sdk`, so clone both repos side by side and build the sdk first:
+`pnpm install` takes `@planeward/sdk` from npm.
 
 ```bash
-cd ../sdk && pnpm install && pnpm build && cd ../cli
 pnpm install
 pnpm build       # dist/bin.js + dist/ui
-```
-
-When the override isn't there, `pnpm install` takes the sdk from npm.
-
-```bash
 pnpm typecheck
 pnpm lint
 pnpm test        # tsx --test
 pnpm format:check
 ```
+
+To try unreleased sdk changes, clone [planeward/sdk](https://github.com/planeward/sdk)
+next to this repo, build it, and temporarily add
+`"@planeward/sdk": link:../sdk` under `overrides` in `pnpm-workspace.yaml`,
+then run `pnpm install`. Don't commit the override: CI and the published
+package install the sdk from npm. Once the sdk change is released, bump the
+`@planeward/sdk` range in `package.json` instead.
 
 To use your build in an app, run `pnpm link --global` here, then
 `planeward dev` in the app folder. Run `pnpm build` again after pulling
