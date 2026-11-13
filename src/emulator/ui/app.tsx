@@ -13,23 +13,35 @@ import type {
   ActivityAction,
   ApiRequestLogEntry,
   EmulatorState,
+  FixtureNotification,
   WebhookDeliveryEntry,
 } from "../contract";
 import { emulatorApi, subscribeToEmulator } from "./api";
 import { ActivityPanel } from "./components/activity-panel";
 import { AppFrame, FrameState } from "./components/app-frame";
+import { InboxPanel } from "./components/inbox-panel";
 import { LeftRail } from "./components/left-rail";
 import { RequestsPanel } from "./components/requests-panel";
 import { TopBar } from "./components/top-bar";
-import { Button, cn } from "./components/ui";
+import { Badge, Button, cn } from "./components/ui";
 import { WebhooksPanel } from "./components/webhooks-panel";
+import {
+  activeDeepLink,
+  appFrameKey,
+  appFrameSrc,
+  inboxCount,
+  nextDeepLink,
+  openNotificationSteps,
+  type DeepLink,
+  type DeepLinkEvent,
+} from "./inbox";
 
 /** Keep the logs bounded in a long session. */
 const MAX_LOG_ENTRIES = 500;
 
-type Tab = "activity" | "requests" | "webhooks";
+type Tab = "activity" | "requests" | "webhooks" | "inbox";
 
-const TAB_IDS: Tab[] = ["activity", "requests", "webhooks"];
+const TAB_IDS: Tab[] = ["activity", "requests", "webhooks", "inbox"];
 
 /** The OS theme, used until the emulator state says otherwise. */
 function systemTheme(): AppTheme {
@@ -77,6 +89,7 @@ export function App() {
   const [focus, setFocus] = useState<{ id: string; nonce: number } | null>(
     null
   );
+  const [deepLink, setDeepLink] = useState<DeepLink | null>(null);
   const [fallbackTheme] = useState(systemTheme);
   const tabRefs = useRef(new Map<Tab, HTMLButtonElement>());
 
@@ -158,31 +171,71 @@ export function App() {
 
   const { app, viewer, view } = state;
   const role: AppViewerRole = view === "dashboard" ? "admin" : viewer.role;
-  const src =
-    view === "dashboard" ? (app.dashboardUrl ?? null) : app.experienceUrl;
+  const frameLink = activeDeepLink(deepLink, state);
+  const src = appFrameSrc(app, view, frameLink);
 
-  async function mutate(task: () => Promise<EmulatorState>) {
+  function updateDeepLink(event: DeepLinkEvent) {
+    setDeepLink((current) => nextDeepLink(current, event));
+  }
+
+  /** Resolves to false when the task failed (the error is shown as a notice). */
+  async function mutate(task: () => Promise<EmulatorState>): Promise<boolean> {
     setBusy(true);
     try {
       setState(await task());
+      return true;
     } catch (cause) {
       setNotice(errorMessage(cause));
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
   function changeViewer(memberId: string) {
+    updateDeepLink({ type: "choose-viewer" });
     void mutate(() => emulatorApi.setViewer({ memberId, role: viewer.role }));
   }
 
   function changeRole(nextRole: AppViewerRole) {
+    updateDeepLink({ type: "choose-role" });
     void mutate(() =>
       emulatorApi.setViewer({ memberId: viewer.memberId, role: nextRole })
     );
   }
 
+  /**
+   * Opens a notification like a member clicking it in the bell: the recipient
+   * becomes the viewer (as a member) in the Experience view, and the frame
+   * loads the app at the notification's path. The deep link is set first;
+   * `activeDeepLink` only applies it once the state shows the recipient in
+   * the Experience view, so the previous viewer never loads it.
+   */
+  function openNotification(notification: FixtureNotification) {
+    updateDeepLink({ type: "open", notification, nonce: Date.now() });
+    const steps = openNotificationSteps({ viewer, view }, notification);
+    if (!steps.viewer && !steps.view) {
+      return;
+    }
+    void mutate(async () => {
+      if (steps.viewer) {
+        const next = await emulatorApi.setViewer(steps.viewer);
+        if (!steps.view) {
+          return next;
+        }
+      }
+      return emulatorApi.setView("experience");
+    }).then((ok) => {
+      if (!ok) {
+        updateDeepLink({ type: "open-failed" });
+      }
+    });
+  }
+
   function changeView(nextView: AppView) {
+    // Also when it's already the view: clicking the app channel goes back to
+    // the plain experience URL.
+    updateDeepLink({ type: "choose-view" });
     if (nextView === view) {
       return;
     }
@@ -213,6 +266,7 @@ export function App() {
     const next = await emulatorApi.reset();
     setState(next);
     setResetCount((count) => count + 1);
+    updateDeepLink({ type: "reset" });
   }
 
   async function runActivity(action: ActivityAction) {
@@ -257,6 +311,11 @@ export function App() {
     { id: "activity", label: "Activity" },
     { id: "requests", label: "Requests", count: requests.length },
     { id: "webhooks", label: "Webhooks", count: deliveries.length },
+    {
+      id: "inbox",
+      label: "Inbox",
+      count: inboxCount(state.entities.notifications, viewer.memberId),
+    },
   ];
 
   return (
@@ -311,6 +370,7 @@ export function App() {
             <span className="text-foreground font-medium capitalize">
               {view}
             </span>
+            {frameLink ? <Badge>notification</Badge> : null}
             <span className="truncate font-mono">
               {src ?? "no dashboardPath"}
             </span>
@@ -320,7 +380,13 @@ export function App() {
               src={src}
               title={app.name}
               theme={theme}
-              frameKey={`${viewer.memberId}:${role}:${view}:${resetCount}`}
+              frameKey={appFrameKey({
+                viewerId: viewer.memberId,
+                role,
+                view,
+                resetCount,
+                deepLink: frameLink,
+              })}
               dev={app.dev}
               fetchToken={emulatorApi.mintToken}
             />
@@ -413,6 +479,22 @@ export function App() {
               entries={deliveries}
               focus={focus}
               onRedeliver={redeliver}
+            />
+          </div>
+          <div
+            id="panel-inbox"
+            role="tabpanel"
+            aria-labelledby="tab-inbox"
+            hidden={tab !== "inbox"}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <InboxPanel
+              notifications={state.entities.notifications}
+              members={state.entities.members}
+              viewerId={viewer.memberId}
+              activeId={frameLink?.notificationId ?? null}
+              busy={busy}
+              onOpen={openNotification}
             />
           </div>
         </aside>

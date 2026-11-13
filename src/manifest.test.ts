@@ -17,4 +17,22 @@ describe("manifest JSON Schema", () => {
       ...APP_GRANTABLE_SCOPES,
     ]);
   });
+
+  it("matches Planeward's APP_GRANTABLE_PERMISSION_KEYS, in that order", () => {
+    assert.deepEqual(
+      [...APP_GRANTABLE_SCOPES],
+      [
+        "COMMUNITY_MEMBERS_READ",
+        "COMMUNITY_MESSAGES_READ",
+        "COMMUNITY_MESSAGES_WRITE",
+        "COURSES_READ",
+        "COURSE_PROGRESS_WRITE",
+        "EVENTS_READ",
+        "EVENT_REGISTRATIONS_WRITE",
+        "FORMS_SUBMIT",
+        "COMMUNITY_BADGES_WRITE",
+        "COMMUNITY_NOTIFICATIONS_WRITE",
+      ]
+    );
+  });
 });

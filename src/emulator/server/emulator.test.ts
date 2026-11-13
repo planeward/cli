@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -26,6 +26,7 @@ import {
   type ActivityAction,
   type ActivityResponse,
   type ApiRequestLogResponse,
+  type EmulatorStateResponse,
   type MintViewerTokenResponse,
   type WebhookDeliveryEntry,
   type WebhookDeliveryListResponse,
@@ -458,6 +459,42 @@ describe("emulator", () => {
     assert.equal(revoked.data.revoked, true);
     const deleted = await client.community.badges.delete(badge.data.id);
     check("delete", "/community/badges/{badgeId}", 200, deleted);
+
+    const notified = await client.community.notifications.send({
+      memberIds: ["member_02", "member_missing", "member_10", "member_02"],
+      body: "  Your order #123 has shipped.  ",
+      href: "/orders/123?tab=items",
+      key: "order-123-shipped",
+    });
+    check("post", "/community/notifications", 200, notified);
+    assert.deepEqual(notified.data, {
+      accepted: ["member_02"],
+      skipped: [
+        { memberId: "member_missing", reason: "member_not_found" },
+        { memberId: "member_10", reason: "member_not_active" },
+      ],
+    });
+    // The host UI reads the inbox from the emulator state.
+    const state = await local<EmulatorStateResponse>(
+      "GET",
+      EMULATOR_ROUTES.state
+    );
+    const inbox = state.body.data.entities.notifications;
+    assert.equal(inbox.length, 1);
+    assert.deepEqual(
+      { ...inbox[0], id: undefined, createdAt: undefined },
+      {
+        id: undefined,
+        memberId: "member_02",
+        title: "Leaderboard",
+        body: "Your order #123 has shipped.",
+        path: "/orders/123?tab=items",
+        href: "/channels/channel_app?appPath=%2Forders%2F123%3Ftab%3Ditems",
+        createdAt: undefined,
+      }
+    );
+    assert.match(inbox[0]!.id, /^notification_local_\d+$/);
+    assert.ok(!Number.isNaN(Date.parse(inbox[0]!.createdAt)));
 
     const events = await client.events.list();
     check("get", "/events", 200, events);
@@ -1243,6 +1280,34 @@ describe("emulator scope enforcement", () => {
       return true;
     });
 
+    await assert.rejects(
+      client.community.notifications.send({
+        memberIds: ["member_02"],
+        body: "Hi",
+        href: "/",
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof PlanewardApiError);
+        assert.equal(error.status, 403);
+        assert.equal(error.missingScope, "COMMUNITY_NOTIFICATIONS_WRITE");
+        return true;
+      }
+    );
+    const notify = await api("POST", "/community/notifications", {
+      memberIds: ["member_02"],
+      body: "Hi",
+      href: "/",
+    });
+    assert.deepEqual(notify, {
+      status: 403,
+      body: {
+        error: "Insufficient API key permissions",
+        missingScope: "COMMUNITY_NOTIFICATIONS_WRITE",
+      },
+    });
+    spec.assertResponse("post", "/community/notifications", 403, notify.body);
+    assert.deepEqual(emulator.instance.store.entities.notifications, []);
+
     // COURSE_PROGRESS_WRITE implies COURSES_READ.
     assert.equal((await api("GET", "/community/courses")).status, 200);
 
@@ -1324,6 +1389,299 @@ describe("emulator scope enforcement", () => {
       await placeholder.idle();
       await placeholder.close();
       await rm(empty, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("emulator notifications", () => {
+  const T0 = Date.parse("2026-03-02T09:00:00.000Z");
+  const MINUTE = 60 * 1000;
+  let clock = T0;
+  let emulator: RunningEmulator;
+  let client: PlanewardClient;
+  let spec: OpenApiValidator;
+  let api: ReturnType<typeof apiCaller>;
+
+  const send = async (input: {
+    memberIds: string[];
+    body?: string;
+    href?: string;
+    key?: string;
+  }) => {
+    const result = await client.community.notifications.send({
+      body: "Your order has shipped.",
+      href: "/orders/123",
+      ...input,
+    });
+    spec.assertResponse("post", "/community/notifications", 200, result);
+    return result.data;
+  };
+  const inbox = (memberId: string) =>
+    emulator.instance.store.entities.notifications.filter(
+      (item) => item.memberId === memberId
+    );
+
+  before(async () => {
+    spec = loadOpenApiValidator();
+    emulator = await startEmulator({
+      manifest: manifestFor("http://127.0.0.1:9", { webhookPath: undefined }),
+      stateDir: null,
+      port: 0,
+      now: () => new Date(clock),
+    });
+    client = createPlanewardClient({
+      secret: emulator.appSecret,
+      installationId: emulator.installationId,
+      baseUrl: emulator.url,
+    });
+    api = apiCaller(emulator);
+  });
+
+  after(async () => {
+    await emulator?.idle();
+    await emulator?.close();
+  });
+
+  it("skips in production's order and dedupes ids in request order", async () => {
+    clock = T0;
+    const result = await send({
+      memberIds: [
+        "member_missing",
+        "member_03",
+        "member_14",
+        "member_03",
+        "member_10",
+        "member_05",
+        "member_missing",
+      ],
+    });
+    assert.deepEqual(result, {
+      accepted: ["member_03", "member_05"],
+      skipped: [
+        { memberId: "member_missing", reason: "member_not_found" },
+        { memberId: "member_14", reason: "member_not_active" },
+        { memberId: "member_10", reason: "member_not_active" },
+      ],
+    });
+    assert.equal(inbox("member_03").length, 1);
+    assert.equal(inbox("member_14").length, 0);
+    assert.equal(inbox("member_03")[0]!.createdAt, new Date(T0).toISOString());
+  });
+
+  it("caps a member at 10 an hour, in a rolling window", async () => {
+    clock = T0;
+    for (let n = 0; n < 5; n += 1) {
+      assert.deepEqual(await send({ memberIds: ["member_02"] }), {
+        accepted: ["member_02"],
+        skipped: [],
+      });
+    }
+    clock = T0 + 30 * MINUTE;
+    for (let n = 0; n < 5; n += 1) {
+      await send({ memberIds: ["member_02"] });
+    }
+    assert.equal(inbox("member_02").length, 10);
+
+    // The eleventh is skipped; others in the same call are not.
+    assert.deepEqual(await send({ memberIds: ["member_02", "member_04"] }), {
+      accepted: ["member_04"],
+      skipped: [{ memberId: "member_02", reason: "over_limit" }],
+    });
+    assert.equal(inbox("member_02").length, 10);
+
+    clock = T0 + 60 * MINUTE - 1;
+    assert.deepEqual(await send({ memberIds: ["member_02"] }), {
+      accepted: [],
+      skipped: [{ memberId: "member_02", reason: "over_limit" }],
+    });
+
+    // An hour after the first five, only the second five still count.
+    clock = T0 + 61 * MINUTE;
+    for (let n = 0; n < 5; n += 1) {
+      assert.deepEqual((await send({ memberIds: ["member_02"] })).accepted, [
+        "member_02",
+      ]);
+    }
+    assert.deepEqual((await send({ memberIds: ["member_02"] })).skipped, [
+      { memberId: "member_02", reason: "over_limit" },
+    ]);
+    assert.equal(inbox("member_02").length, 15);
+  });
+
+  it("reports a repeated key as accepted without sending or using the cap", async () => {
+    clock = T0 + 2 * 24 * 60 * MINUTE;
+    const first = await send({ memberIds: ["member_06"], key: "order-1" });
+    assert.deepEqual(first, { accepted: ["member_06"], skipped: [] });
+    const ledger = () =>
+      emulator.instance.store.entities.notificationSends.filter(
+        (row) => row.memberId === "member_06"
+      ).length;
+    assert.equal(ledger(), 1);
+
+    clock += 10 * MINUTE;
+    const repeat = await send({ memberIds: ["member_06"], key: "order-1" });
+    assert.deepEqual(repeat, { accepted: ["member_06"], skipped: [] });
+    assert.equal(inbox("member_06").length, 1, "nothing new is stored");
+    assert.equal(ledger(), 1, "the cap is not used");
+
+    // Nine more fill the hour; the repeated key still reads as accepted,
+    // because the key check comes before the cap.
+    for (let n = 0; n < 9; n += 1) await send({ memberIds: ["member_06"] });
+    assert.deepEqual(await send({ memberIds: ["member_06"], key: "order-1" }), {
+      accepted: ["member_06"],
+      skipped: [],
+    });
+    assert.deepEqual(await send({ memberIds: ["member_06"], key: "order-2" }), {
+      accepted: [],
+      skipped: [{ memberId: "member_06", reason: "over_limit" }],
+    });
+
+    // The key only covers members it was sent to.
+    assert.deepEqual(
+      await send({ memberIds: ["member_07", "member_06"], key: "order-1" }),
+      { accepted: ["member_07", "member_06"], skipped: [] }
+    );
+    assert.equal(inbox("member_07").length, 1);
+
+    // After 24 hours the same key sends again, and old rows are pruned.
+    clock += 24 * 60 * MINUTE;
+    assert.deepEqual(await send({ memberIds: ["member_06"], key: "order-1" }), {
+      accepted: ["member_06"],
+      skipped: [],
+    });
+    assert.equal(inbox("member_06").length, 11);
+    assert.equal(ledger(), 1);
+    const oldest = Math.min(
+      ...emulator.instance.store.entities.notificationSends.map((row) =>
+        Date.parse(row.at)
+      )
+    );
+    assert.ok(clock - oldest < 24 * 60 * MINUTE);
+  });
+
+  it("titles every notification with the app's name and ignores a title", async () => {
+    const response = await api("POST", "/community/notifications", {
+      memberIds: ["member_08"],
+      title: "Not this",
+      body: "Hello",
+      href: "/",
+    });
+    assert.equal(response.status, 200);
+    const [stored] = inbox("member_08");
+    assert.equal(stored?.title, "Leaderboard");
+    assert.equal(stored?.path, "/");
+    assert.equal(stored?.href, "/channels/channel_app?appPath=%2F");
+  });
+
+  it("rejects invalid bodies with 400 and a message naming the field", async () => {
+    const valid = { memberIds: ["member_09"], body: "Hello", href: "/a" };
+    const cases: Array<[field: string, body: unknown]> = [
+      ["memberIds", { ...valid, memberIds: [] }],
+      [
+        "memberIds",
+        {
+          ...valid,
+          memberIds: Array.from({ length: 101 }, (_, n) => `member_${n}`),
+        },
+      ],
+      ["memberIds", { ...valid, memberIds: [""] }],
+      ["memberIds", { ...valid, memberIds: ["m".repeat(129)] }],
+      ["memberIds", { ...valid, memberIds: "member_09" }],
+      ["memberIds", { body: "Hello", href: "/a" }],
+      ["body", { ...valid, body: "   " }],
+      ["body", { ...valid, body: "x".repeat(281) }],
+      ["body", { ...valid, body: "a\u0000b" }],
+      ["body", { memberIds: ["member_09"], href: "/a" }],
+      ["href", { memberIds: ["member_09"], body: "Hello" }],
+      ["href", { ...valid, href: "" }],
+      ["href", { ...valid, href: "orders/123" }],
+      ["href", { ...valid, href: "//evil.example" }],
+      ["href", { ...valid, href: "/\\evil.example" }],
+      ["href", { ...valid, href: "https://evil.example/a" }],
+      ["href", { ...valid, href: "javascript:alert(1)" }],
+      ["href", { ...valid, href: "/a#b" }],
+      ["href", { ...valid, href: "/a b" }],
+      ["href", { ...valid, href: "/café" }],
+      ["href", { ...valid, href: "/../admin" }],
+      ["href", { ...valid, href: "/%2e%2e//evil.example" }],
+      ["href", { ...valid, href: `/${"a".repeat(512)}` }],
+      ["key", { ...valid, key: "" }],
+      ["key", { ...valid, key: "has space" }],
+      ["key", { ...valid, key: "k".repeat(101) }],
+    ];
+    for (const [field, body] of cases) {
+      const response = await api("POST", "/community/notifications", body);
+      const label = JSON.stringify(body).slice(0, 120);
+      assert.equal(response.status, 400, label);
+      assert.equal(typeof response.body.error, "string", label);
+      assert.match(response.body.error, new RegExp(field), label);
+      spec.assertResponse(
+        "post",
+        "/community/notifications",
+        400,
+        response.body
+      );
+    }
+    assert.equal(inbox("member_09").length, 0);
+
+    // At the limits is fine; body is trimmed before its length is checked.
+    const atLimits = await send({
+      memberIds: ["member_09"],
+      body: ` ${"x".repeat(280)} `,
+      href: `/${"a".repeat(511)}`,
+      key: "k".repeat(100),
+    });
+    assert.deepEqual(atLimits.accepted, ["member_09"]);
+
+    const response = await fetch(
+      `${emulator.url}/api/v1/community/notifications`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${emulator.appSecret}`,
+          "x-planeward-installation": emulator.installationId,
+          "Content-Type": "application/json",
+        },
+        body: "{not json",
+      }
+    );
+    const invalid = await response.json();
+    assert.equal(response.status, 400);
+    assert.deepEqual(invalid, { error: "Invalid JSON body." });
+    spec.assertResponse("post", "/community/notifications", 400, invalid);
+  });
+
+  it("reseeds a state.json saved before notifications existed", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "planeward-v2-"));
+    try {
+      const seeded = await startEmulator({
+        manifest: manifestFor("http://127.0.0.1:9", { webhookPath: undefined }),
+        stateDir,
+        port: 0,
+      });
+      await seeded.instance.store.flush();
+      await seeded.idle();
+      await seeded.close();
+      const path = join(stateDir, STATE_FILE_NAME);
+      const saved = JSON.parse(await readFile(path, "utf8"));
+      const { notifications, notificationSends, ...entities } = saved.entities;
+      assert.deepEqual([notifications, notificationSends], [[], []]);
+      await writeFile(path, JSON.stringify({ ...saved, version: 2, entities }));
+
+      const reopened = await startEmulator({
+        manifest: manifestFor("http://127.0.0.1:9", { webhookPath: undefined }),
+        stateDir,
+        port: 0,
+      });
+      try {
+        assert.equal(reopened.fresh, true);
+        assert.deepEqual(reopened.instance.store.entities.notifications, []);
+      } finally {
+        await reopened.idle();
+        await reopened.close();
+      }
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
     }
   });
 });

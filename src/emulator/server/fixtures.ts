@@ -787,5 +787,7 @@ export function createSeedEntities(input: {
       workspaceId: input.workspaceId,
     })),
     badges: [],
+    notifications: [],
+    notificationSends: [],
   };
 }

@@ -37,8 +37,9 @@ const FRAME_MOUNTED: ReadonlySet<FrameStatus> = new Set([
 
 /**
  * The app iframe plus the host side of the postMessage protocol
- * (`createAppFrameHost`). A new `frameKey` (viewer, role or view) remounts
- * the iframe with a fresh token cache, like production's per-load cache.
+ * (`createAppFrameHost`). A new `frameKey` (viewer, role, view or an opened
+ * notification) remounts the iframe with a fresh token cache, like
+ * production's per-load cache.
  */
 export function AppFrame({
   src,

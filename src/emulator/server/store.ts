@@ -14,7 +14,8 @@ import { ensureStateDir } from "./state-dir";
 
 export const STATE_FILE_NAME = "state.json";
 
-const STATE_VERSION = 2;
+/** Bump when `EmulatorEntities` changes shape; older `state.json` is reseeded. */
+const STATE_VERSION = 3;
 
 /** What `<stateDir>/state.json` holds; `app` is rebuilt from the manifest each start. */
 type PersistedState = {
@@ -38,7 +39,9 @@ function isPersistedState(value: unknown): value is PersistedState {
     typeof state.seq === "number" &&
     Boolean(state.viewer) &&
     Boolean(state.entities) &&
-    Array.isArray(state.entities?.members)
+    Array.isArray(state.entities?.members) &&
+    Array.isArray(state.entities?.notifications) &&
+    Array.isArray(state.entities?.notificationSends)
   );
 }
 

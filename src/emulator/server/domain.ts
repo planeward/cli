@@ -6,11 +6,13 @@
  */
 import type { AppWebhookEventDataMap } from "@planeward/sdk/server";
 
+import { communityAppChannelHref } from "../app-path";
 import type {
   AttendanceStatus,
   CommunityMemberStatus,
   CommunityMessageAuthor,
   CommunityModuleProgress,
+  CommunityNotificationSendResult,
   EmulatorWebhookEventName,
   EventRegistration,
   FixtureBadge,
@@ -20,6 +22,7 @@ import type {
   FixtureForm,
   FixtureMember,
   FixtureMessage,
+  FixtureNotification,
   FormSubmission,
 } from "../contract";
 import {
@@ -64,6 +67,17 @@ export const COMMUNITY_BADGE_KEY_MAX_LENGTH = 48;
 export const COMMUNITY_BADGE_NAME_MAX_LENGTH = 40;
 export const COMMUNITY_BADGE_DESCRIPTION_MAX_LENGTH = 200;
 export const BADGE_LIMIT_ERROR = `This app already has ${COMMUNITY_BADGE_LIMIT_PER_APP} badges in this workspace, the most it can have. Delete a badge or reuse an existing key.`;
+
+// `config/app/community-apps.ts` (`COMMUNITY_APP_NOTIFICATION_*`).
+export const COMMUNITY_NOTIFICATION_MEMBER_LIMIT = 100;
+export const COMMUNITY_NOTIFICATION_MEMBER_ID_MAX_LENGTH = 128;
+export const COMMUNITY_NOTIFICATION_BODY_MAX_LENGTH = 280;
+export const COMMUNITY_NOTIFICATION_KEY_MAX_LENGTH = 100;
+/** Notifications one app may send one member in a rolling hour. */
+export const COMMUNITY_NOTIFICATION_HOURLY_LIMIT = 10;
+export const COMMUNITY_NOTIFICATION_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+/** How long a `key` stops the app notifying the same member again. */
+export const COMMUNITY_NOTIFICATION_KEY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const MONTHLY_PLAN = { id: "plan_monthly", name: "Monthly membership" };
 
@@ -869,6 +883,84 @@ export class Domain {
       data: this.badgeEventData(badge, member.id),
       filteredReason: null,
     };
+  }
+
+  // Notifications ----------------------------------------------------------
+
+  /**
+   * `POST /community/notifications` after validation. Ids are deduped in
+   * request order, then each member is checked in production's order:
+   * `member_not_found`, `member_not_active`, a `key` already sent to the
+   * member in the last 24 hours (reported accepted; nothing is stored and
+   * the cap isn't used), `over_limit` at
+   * {@link COMMUNITY_NOTIFICATION_HOURLY_LIMIT} in a rolling hour, otherwise
+   * accepted and stored with the app's name as title. `channel_not_visible`
+   * never happens: the emulator's APP channel is always visible. Times come
+   * from the store clock.
+   */
+  sendNotifications(input: {
+    memberIds: string[];
+    body: string;
+    path: string;
+    key: string | null;
+  }): CommunityNotificationSendResult {
+    const now = this.store.now().getTime();
+    const createdAt = new Date(now).toISOString();
+    const entities = this.#entities;
+    const keptSends = entities.notificationSends.filter(
+      (send) => now - Date.parse(send.at) < COMMUNITY_NOTIFICATION_KEY_WINDOW_MS
+    );
+    let changed = keptSends.length !== entities.notificationSends.length;
+    entities.notificationSends = keptSends;
+
+    const result: CommunityNotificationSendResult = {
+      accepted: [],
+      skipped: [],
+    };
+    for (const memberId of new Set(input.memberIds)) {
+      const member = this.member(memberId);
+      if (!member) {
+        result.skipped.push({ memberId, reason: "member_not_found" });
+        continue;
+      }
+      if (member.status !== "ACTIVE") {
+        result.skipped.push({ memberId, reason: "member_not_active" });
+        continue;
+      }
+      const sends = entities.notificationSends.filter(
+        (send) => send.memberId === member.id
+      );
+      if (input.key !== null && sends.some((send) => send.key === input.key)) {
+        result.accepted.push(member.id);
+        continue;
+      }
+      const lastHour = sends.filter(
+        (send) =>
+          now - Date.parse(send.at) < COMMUNITY_NOTIFICATION_LIMIT_WINDOW_MS
+      );
+      if (lastHour.length >= COMMUNITY_NOTIFICATION_HOURLY_LIMIT) {
+        result.skipped.push({ memberId, reason: "over_limit" });
+        continue;
+      }
+      entities.notificationSends.push({
+        memberId: member.id,
+        key: input.key,
+        at: createdAt,
+      });
+      entities.notifications.push({
+        id: this.store.nextId("notification"),
+        memberId: member.id,
+        title: this.store.app.name,
+        body: input.body,
+        path: input.path,
+        href: communityAppChannelHref(this.store.app.channelId, input.path),
+        createdAt,
+      } satisfies FixtureNotification);
+      result.accepted.push(member.id);
+      changed = true;
+    }
+    if (changed) this.store.changed();
+    return result;
   }
 
   /** Awards snapshot the badge; keep them in step after an edit. */

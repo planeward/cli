@@ -73,7 +73,7 @@ file on unpkg for the installed version, for example
 App-grantable scopes: `COMMUNITY_MEMBERS_READ`, `COMMUNITY_MESSAGES_READ`,
 `COMMUNITY_MESSAGES_WRITE`, `COURSES_READ`, `COURSE_PROGRESS_WRITE`,
 `EVENTS_READ`, `EVENT_REGISTRATIONS_WRITE`, `FORMS_SUBMIT`,
-`COMMUNITY_BADGES_WRITE`.
+`COMMUNITY_BADGES_WRITE`, `COMMUNITY_NOTIFICATIONS_WRITE`.
 
 ```json
 {
@@ -246,6 +246,15 @@ also pass `--help` to any command.
   `theme` changes. It locks messages to the app's origin. You can switch the
   viewer (any seeded member, as `member` or `admin`), the view (Experience or
   Dashboard) and the theme.
+- **Inbox:** the dev panel's Inbox tab lists the notifications your app sent,
+  newest first, with the title (your app's name), the body as plain text,
+  the recipient, the path and the time. It shows the current viewer's by
+  default; pick another member or All members. Clicking one does what a
+  member's click in the community bell does: the emulator switches to the
+  recipient as a `member` in the Experience view and loads your app at the
+  notification's path on its own origin (`dev.url` + path), with the same
+  viewer token handshake. Clicking it again reloads the app. Picking a view
+  or the app channel, or another viewer, goes back to the experience URL.
 - **API:** every app-grantable `/api/v1` endpoint, backed by a seeded store:
   - community members, channels and messages
   - courses and progress
@@ -254,6 +263,19 @@ also pass `--help` to any command.
   - badges and member badges, with the same 50-badges-per-app cap (a new
     key past it is a 409; an existing key still updates) and validation
     messages
+  - notifications (`POST /community/notifications`, scope
+    `COMMUNITY_NOTIFICATIONS_WRITE`), with the same field limits and `href`
+    rule (a path in your app such as `/orders/123?tab=items`: no host,
+    scheme, `#`, `\`, spaces, non-ASCII or `.` and `..` segments). A
+    repeated member id is notified once. Members are skipped in production's
+    order: `member_not_found`, `member_not_active`, then `over_limit` once a
+    member got 10 from the app in the last hour. A `key` the member already
+    got in the last 24 hours is listed in `accepted` and not sent again,
+    without using the hourly cap. The title is always the manifest `name`; a
+    `title` in the body is dropped. Each accepted member's notification is
+    kept in the emulator state (`entities.notifications`) with your `path`
+    and the community-site `href` production would store
+    (`/channels/<channelId>?appPath=%2Forders%2F123`).
 
   Auth uses the local `pwa_` secret plus `x-planeward-installation`. Scopes
   are the manifest's `scopes`. A missing scope returns the same 403 body
@@ -289,6 +311,15 @@ also pass `--help` to any command.
 - **Badges:** the API and webhooks store and return awarded badges, but the
   emulator's host UI doesn't show them next to members or their messages
   the way the community chat does.
+- **Notifications:** nothing is pushed and there's no community bell or
+  unread state; the host UI's Inbox tab lists what was stored instead, and
+  opens the app in place rather than through the community site's
+  `?appPath=` link. Members have no
+  notification preferences, so nobody has muted the app (production lists
+  muted members in `accepted` too, so the response is the same). The app's
+  channel is always visible to `@everyone`, so `channel_not_visible` never
+  happens. The hourly cap is a rolling 60 minutes and the `key` window a
+  rolling 24 hours, both on the emulator's clock.
 - **No rate limiting.** Production answers 429
   `{ "error": "Too many API requests. Try again shortly." }` with
   `Retry-After` once a key or installation is over its limit, counting

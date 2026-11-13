@@ -213,6 +213,30 @@ export type CommunityBadge = {
   updatedAt: string;
 };
 
+/**
+ * `CommunityNotificationSkipReason`. The emulator never answers
+ * `channel_not_visible`: its APP channel is always visible to `@everyone`.
+ */
+export type CommunityNotificationSkipReason =
+  | "member_not_found"
+  | "member_not_active"
+  | "channel_not_visible"
+  | "over_limit";
+
+/** `CommunityNotificationSkip`. */
+export type CommunityNotificationSkip = {
+  memberId: string;
+  reason: CommunityNotificationSkipReason;
+};
+
+/** `CommunityNotificationSendResult`: the `data` of `POST /community/notifications`. */
+export type CommunityNotificationSendResult = {
+  /** Members the notification was accepted for, in request order, each once. */
+  accepted: string[];
+  /** Members who got nothing, in request order, each with the reason. */
+  skipped: CommunityNotificationSkip[];
+};
+
 /** `AttendanceStatus`. */
 export type AttendanceStatus =
   "PENDING" | "ATTENDED" | "LEFT_EARLY" | "NO_SHOW" | "UNCLASSIFIED";
@@ -331,6 +355,54 @@ export type FixtureForm = Form & { submissions: FormSubmission[] };
 /** Badges the app created through the mock API; awards live on `FixtureMember.badges`. */
 export type FixtureBadge = CommunityBadge;
 
+/**
+ * A notification `POST /community/notifications` delivered to one member: the
+ * emulator's stand-in for the member's in-app inbox (the bell). One row per
+ * accepted member; nothing is stored for a skipped member or for a repeated
+ * `key`. Stored oldest first. The API never returns these; the host UI reads
+ * them from `EmulatorState.entities.notifications`.
+ */
+export type FixtureNotification = {
+  /** Emulator id, e.g. `notification_local_12`. */
+  id: string;
+  /** The recipient's community membership id. */
+  memberId: string;
+  /** Always the app's name (the manifest's `name` at send time). */
+  title: string;
+  /** Plain text as sent, trimmed. Never render it as Markdown or HTML. */
+  body: string;
+  /**
+   * The app's `href` exactly as sent: a path inside the app with an optional
+   * query, e.g. `/orders/123?tab=items`. It passed `isSafeRelativePath`
+   * (`../app-path`). Open it with
+   * `resolveAppFrameSrc(app.experienceUrl, path)`.
+   */
+  path: string;
+  /**
+   * The community-site link production stores and opens:
+   * `communityAppChannelHref(app.channelId, path)`, e.g.
+   * `/channels/channel_app?appPath=%2Forders%2F123`. There is no community
+   * site in the emulator; it is shown for reference.
+   */
+  href: string;
+  /** ISO 8601, from the emulator clock. */
+  createdAt: string;
+};
+
+/**
+ * Ledger row behind the hourly cap and the `key` window, one per accepted
+ * member, like production's `CommunityAppNotificationSend` (which records
+ * members who muted the app too). Rows older than 24 hours are pruned on the
+ * next send. Internal: the UI has no use for it.
+ */
+export type FixtureNotificationSend = {
+  memberId: string;
+  /** The request's `key`, or null when it had none. */
+  key: string | null;
+  /** ISO 8601, from the emulator clock. */
+  at: string;
+};
+
 export type EmulatorEntities = {
   members: FixtureMember[];
   channels: FixtureChannel[];
@@ -341,6 +413,10 @@ export type EmulatorEntities = {
   events: FixtureEvent[];
   forms: FixtureForm[];
   badges: FixtureBadge[];
+  /** Every notification apps sent, oldest first. Seeded empty. */
+  notifications: FixtureNotification[];
+  /** Cap and `key` ledger, oldest first. Seeded empty. */
+  notificationSends: FixtureNotificationSend[];
 };
 
 // State ---------------------------------------------------------------------

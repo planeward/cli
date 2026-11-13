@@ -10,12 +10,17 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
 
 import type { AppGrantableScope } from "../../manifest";
+import { APP_PATH_MAX_LENGTH, isSafeRelativePath } from "../app-path";
 import type { FixtureEvent, FixtureMember } from "../contract";
 import type { Domain } from "./domain";
 import {
   COMMUNITY_BADGE_DESCRIPTION_MAX_LENGTH,
   COMMUNITY_BADGE_KEY_MAX_LENGTH,
   COMMUNITY_BADGE_NAME_MAX_LENGTH,
+  COMMUNITY_NOTIFICATION_BODY_MAX_LENGTH,
+  COMMUNITY_NOTIFICATION_KEY_MAX_LENGTH,
+  COMMUNITY_NOTIFICATION_MEMBER_ID_MAX_LENGTH,
+  COMMUNITY_NOTIFICATION_MEMBER_LIMIT,
 } from "./domain";
 import {
   API_KEY_ERROR,
@@ -164,6 +169,47 @@ const badgePatchSchema = z
       patch.color !== undefined,
     "Send at least one of name, description or color."
   );
+
+// `server/community/app-notifications.ts`. Unknown fields (a `title`, say)
+// are dropped: the title is always the app's name.
+const notificationSendSchema = z.object({
+  memberIds: z
+    .array(
+      z
+        .string()
+        .min(1, "Each member id is required.")
+        .max(COMMUNITY_NOTIFICATION_MEMBER_ID_MAX_LENGTH)
+    )
+    .min(1, "memberIds needs at least one member id.")
+    .max(
+      COMMUNITY_NOTIFICATION_MEMBER_LIMIT,
+      `memberIds can list at most ${COMMUNITY_NOTIFICATION_MEMBER_LIMIT} members.`
+    ),
+  body: z
+    .string()
+    .trim()
+    .min(1, "body is required.")
+    .max(COMMUNITY_NOTIFICATION_BODY_MAX_LENGTH)
+    .refine((value) => !value.includes("\u0000"), {
+      message: "body can't contain a null character.",
+    }),
+  href: z
+    .string()
+    .max(APP_PATH_MAX_LENGTH)
+    .refine((value) => isSafeRelativePath(value), {
+      message:
+        "href must be a path in your app, such as /orders/123: it starts with one /, and has no host, scheme, #fragment, backslash, spaces, non-ASCII characters or . and .. segments.",
+    }),
+  key: z
+    .string()
+    .min(1, "key can't be empty.")
+    .max(COMMUNITY_NOTIFICATION_KEY_MAX_LENGTH)
+    .regex(
+      /^[A-Za-z0-9._:-]+$/,
+      "key can only contain letters, digits, '.', '_', ':' and '-'."
+    )
+    .optional(),
+});
 
 /**
  * App-facing routes answer schema failures as 400 `{ error }` with Zod's
@@ -752,6 +798,25 @@ export function createApiRoutes(deps: ApiDeps): Hono<ApiEnv> {
       webhooks.dispatch(events);
       return c.json({
         data: { badgeId: badge.id, memberId: member.id, revoked },
+      });
+    }
+  );
+
+  // Notifications ---------------------------------------------------------
+
+  route(
+    "POST",
+    "/community/notifications",
+    one("COMMUNITY_NOTIFICATIONS_WRITE"),
+    async (c) => {
+      const input = parseOrError(notificationSendSchema, await readJson(c));
+      return c.json({
+        data: domain.sendNotifications({
+          memberIds: input.memberIds,
+          body: input.body,
+          path: input.href,
+          key: input.key ?? null,
+        }),
       });
     }
   );

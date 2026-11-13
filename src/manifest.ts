@@ -23,6 +23,7 @@ export const APP_GRANTABLE_SCOPES = [
   "EVENT_REGISTRATIONS_WRITE",
   "FORMS_SUBMIT",
   "COMMUNITY_BADGES_WRITE",
+  "COMMUNITY_NOTIFICATIONS_WRITE",
 ] as const;
 
 export type AppGrantableScope = (typeof APP_GRANTABLE_SCOPES)[number];

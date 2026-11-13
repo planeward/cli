@@ -11,7 +11,9 @@ info:
     shortly." }` with `Retry-After` and `X-RateLimit-*` headers. An app whose
     URLs are still localhost answers 403 `{ "error": "This app is in local
     development and only works in its own workspace." }` when called for an
-    installation outside its publisher's workspace.
+    installation outside its publisher's workspace. A write that conflicts
+    with the current state answers 409 `{ "error": "..." }`: for tasks, a
+    stale `expectedVersion` or a move into a status at its blocking WIP limit.
 servers:
   - url: "{origin}/api/v1"
     variables:
@@ -56,8 +58,8 @@ tags:
     description: Mint embed sessions and list a host-site user's projects
   - name: Community
     description: >
-      Community members, channels, messages, courses, progress and badges.
-      Called by community apps with their `pwa_` secret plus the
+      Community members, channels, messages, courses, progress, badges and
+      notifications. Called by community apps with their `pwa_` secret plus the
       `x-planeward-installation` header; scopes are the ones the installer
       granted. Endpoints that act for a member take `memberId` (the community
       membership id).
@@ -130,6 +132,25 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/ProjectLabelList"
+  /projects/{projectId}/roles:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Tasks]
+      summary: List roles that can be assigned in a project
+      operationId: listProjectAssignableRoles
+      description: >-
+        Workspace roles that can be task assignees in this project: roles with
+        Manage any project, or Editor or Project manager access to the project.
+        Sorted by rank (highest first), then name. Use `roleId` in
+        `assigneeRoleIds`. Needs `PROJECTS_READ` or `TASKS_READ`.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200":
+          $ref: "#/components/responses/ProjectAssignableRoleList"
   /projects/{projectId}/tasks:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -154,6 +175,10 @@ paths:
       tags: [Tasks]
       summary: Create a task
       operationId: createTask
+      description: >-
+        Creating a task directly in a Done status sets `completedAt` and
+        schedules auto-archive. A status at its blocking WIP limit answers 409.
+        A task created with `parentId` also sends a `task.created` webhook.
       requestBody:
         required: true
         content:
@@ -163,6 +188,16 @@ paths:
       responses:
         "201":
           $ref: "#/components/responses/TaskItem"
+        "400":
+          $ref: "#/components/responses/TaskBadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/TaskNotFound"
+        "409":
+          $ref: "#/components/responses/TaskConflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
   /tasks/{taskId}:
     parameters:
       - $ref: "#/components/parameters/TaskId"
@@ -177,14 +212,32 @@ paths:
       tags: [Tasks]
       summary: Update a task
       operationId: updateTask
+      description: >-
+        All fields are applied in one write with one `version` bump. Moving the
+        task to a Done status sets `completedAt` and schedules auto-archive
+        (an archived task then answers 404); moving it out clears
+        `completedAt`. A status change puts the task at the end of the new
+        column. A status at its blocking WIP limit answers 409. Send
+        `expectedVersion` to reject the write with 409 when someone else
+        changed the task first; omit it and the last write wins.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TaskWrite"
+              $ref: "#/components/schemas/TaskPatch"
       responses:
         "200":
           $ref: "#/components/responses/TaskItem"
+        "400":
+          $ref: "#/components/responses/TaskBadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/TaskNotFound"
+        "409":
+          $ref: "#/components/responses/TaskConflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
     delete:
       tags: [Tasks]
       summary: Delete a task
@@ -192,6 +245,12 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/TaskItem"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/TaskNotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
   /customers:
     get:
       tags: [Customers]
@@ -2318,6 +2377,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /community/notifications:
+    post:
+      tags: [Community]
+      summary: Send a notification to members
+      operationId: sendCommunityNotifications
+      description: >
+        Requires `COMMUNITY_NOTIFICATIONS_WRITE` and an app caller (`pwa_`
+        secret); workspace API keys get 403. Sends an in-app notification and
+        a push notification to up to 100 members. It never sends email. The
+        title is always the app's name: Planeward sets it, and a `title` in
+        the body is ignored. `href` is a path in the app. Opening the
+        notification opens the app's channel on the community site with the
+        app loaded at that path. Members can turn off an app's notifications.
+        A member who did is still listed in `accepted`, so the app can't tell
+        who muted it. A member gets at most 10 notifications an hour from one
+        app; past that the member is skipped with `over_limit`. Send `key`
+        when you retry: a member the app already sent that `key` in the last
+        24 hours is listed in `accepted` and not notified again. Without
+        `key`, a retry notifies again. The response is 200 even when every
+        member is skipped.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityNotificationSend"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityNotificationSendResultItem"
+        "400":
+          description: >
+            `Invalid JSON body.`, or a body that fails validation (a readable
+            message naming the field)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No community
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
   /sites:
     get:
       tags: [Sites]
@@ -3244,6 +3350,78 @@ components:
         awardedAt:
           type: string
           format: date-time
+    CommunityNotificationSend:
+      type: object
+      required: [memberIds, body, href]
+      properties:
+        memberIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          description: >
+            Community membership ids. A repeated id is notified once and
+            appears once in the response.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+        body:
+          type: string
+          minLength: 1
+          maxLength: 280
+          description: Plain text, shown as written. Markdown and HTML are not rendered.
+        href:
+          type: string
+          maxLength: 512
+          pattern: "^(?![^?]*/(?:\\.|%2[Ee]){1,2}(?:[/?]|$))/(?!/)(?:[A-Za-z0-9\\-._~!$&'()*+,;=:@/?]|%[0-9A-Fa-f]{2})*$"
+          description: >
+            Path in the app with an optional query, such as `/orders/123`. It
+            is resolved against the origin of the app's Experience URL, so `/`
+            is the root of that origin. It can't name a host or scheme, and
+            can't contain a `#` fragment, `\`, spaces, non-ASCII characters or
+            `.` and `..` segments.
+        key:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: "^[A-Za-z0-9._:-]+$"
+          description: >
+            Makes a retry safe. A member the app already sent this `key` in
+            the last 24 hours is listed in `accepted` and not notified again.
+    CommunityNotificationSkipReason:
+      type: string
+      enum:
+        [member_not_found, member_not_active, channel_not_visible, over_limit]
+      description: >
+        `member_not_found`: the id is not a member of this workspace's
+        community. `member_not_active`: the member is suspended or revoked.
+        `channel_not_visible`: the app has no channel `@everyone` can view, so
+        the notification has nowhere to open. `over_limit`: the member already
+        got 10 notifications from this app in the last hour.
+    CommunityNotificationSkip:
+      type: object
+      required: [memberId, reason]
+      properties:
+        memberId:
+          type: string
+        reason:
+          $ref: "#/components/schemas/CommunityNotificationSkipReason"
+    CommunityNotificationSendResult:
+      type: object
+      required: [accepted, skipped]
+      properties:
+        accepted:
+          type: array
+          description: >
+            Members the notification was accepted for, in request order.
+            Includes members who turned off the app's notifications.
+          items:
+            type: string
+        skipped:
+          type: array
+          description: Members who got nothing, each with the reason.
+          items:
+            $ref: "#/components/schemas/CommunityNotificationSkip"
     EventRegistrationWrite:
       description: >
         Exactly one of `memberId` or `contactId`. App callers must send
@@ -3372,7 +3550,7 @@ components:
         description:
           type: string
           nullable: true
-          description: Derived plain text from descriptionContent. Not written by the in-app editor.
+          description: Plain text derived from descriptionContent on every write.
         descriptionContent:
           $ref: "#/components/schemas/TaskDescriptionContent"
         statusId:
@@ -3396,8 +3574,15 @@ components:
           type: string
           format: date-time
           nullable: true
+          description: >
+            Set when the task enters a Done status (from the app, REST, MCP or
+            a status-type change) and cleared when it leaves one. Auto-archive
+            is scheduled from this time; archived tasks are no longer returned.
         version:
           type: integer
+          description: >
+            Increments on every write. Send it back as `expectedVersion` on
+            PATCH to detect concurrent edits.
         createdAt:
           type: string
           format: date-time
@@ -3417,6 +3602,17 @@ components:
               image:
                 type: string
                 nullable: true
+        assigneeRoles:
+          type: array
+          description: Workspace roles assigned to the task. Everyone who holds the role owns the task.
+          items:
+            type: object
+            required: [roleId, name]
+            properties:
+              roleId:
+                type: string
+              name:
+                type: string
         label:
           allOf:
             - $ref: "#/components/schemas/TaskLabel"
@@ -3437,6 +3633,19 @@ components:
         description:
           type: string
           nullable: true
+    ProjectAssignableRole:
+      type: object
+      required: [roleId, name, color, rank]
+      properties:
+        roleId:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+        rank:
+          type: integer
+          description: Position in the role hierarchy. Higher is higher.
     ProjectLabel:
       type: object
       required: [id, projectId, name, color]
@@ -3470,6 +3679,8 @@ components:
       properties:
         title:
           type: string
+          minLength: 1
+          maxLength: 500
         description:
           type: string
           nullable: true
@@ -3493,8 +3704,20 @@ components:
           nullable: true
         assigneeMembershipIds:
           type: array
+          maxItems: 100
           items:
             type: string
+        assigneeRoleIds:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+          description: >
+            Workspace role ids from GET /projects/{projectId}/roles. A role
+            must have Manage any project,
+            or Editor or Project manager access to the project; otherwise the
+            request fails with "One or more assignee roles are invalid." On
+            update, the list replaces the current roles only when present.
         labelId:
           type: string
           nullable: true
@@ -3509,6 +3732,19 @@ components:
             the same project; subtasks are one level deep, so a task that has
             subtasks cannot become one. On update, a new id moves the task to
             that parent and null unlinks it.
+    TaskPatch:
+      allOf:
+        - $ref: "#/components/schemas/TaskWrite"
+        - type: object
+          properties:
+            expectedVersion:
+              type: integer
+              minimum: 1
+              description: >
+                The task `version` you last read. When the task has changed
+                since, the update is rejected with 409 `Task was modified by
+                someone else. Refresh and retry.` Omit it and the last write
+                wins.
     CustomerType:
       type: object
       properties:
@@ -5763,6 +5999,48 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    TaskBadRequest:
+      description: >
+        Malformed JSON (`{ "error": "Invalid JSON body." }`), a body that fails
+        validation (`ValidationErrorTree`, for example a title over 500
+        characters), or a broken task rule (`Error`): an invalid parent,
+        assignee, role, priority or description content, or a milestone or
+        cycle outside the task's project
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/Error"
+              - $ref: "#/components/schemas/ValidationErrorTree"
+    TaskNotFound:
+      description: >
+        The task, project, status or label is not found in this workspace, or
+        the task is archived
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TaskConflict:
+      description: >
+        `Task was modified by someone else. Refresh and retry.` when
+        `expectedVersion` is stale, or `Status "<name>" is at its task limit
+        (<n>).` when the target status has a blocking WIP limit
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: >
+        Over the key's rate limit, or over 30 assignee changes a minute per
+        key. Carries `Retry-After` and `X-RateLimit-*` headers.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     InvalidWriteBody:
       description: >
         Malformed JSON (`{ "error": "Invalid JSON body." }`), or a body that
@@ -5877,6 +6155,16 @@ components:
             properties:
               data:
                 $ref: "#/components/schemas/CommunityMemberBadge"
+    CommunityNotificationSendResultItem:
+      description: Which members the notification was accepted for and which were skipped
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/CommunityNotificationSendResult"
     SequenceItem:
       description: A sequence
       content:
@@ -6011,6 +6299,20 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/ProjectLabel"
+              meta:
+                $ref: "#/components/schemas/ListMeta"
+    ProjectAssignableRoleList:
+      description: Paginated roles that can be assigned in a project
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectAssignableRole"
               meta:
                 $ref: "#/components/schemas/ListMeta"
     TaskItem:

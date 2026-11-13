@@ -51,7 +51,8 @@
           "EVENTS_READ",
           "EVENT_REGISTRATIONS_WRITE",
           "FORMS_SUBMIT",
-          "COMMUNITY_BADGES_WRITE"
+          "COMMUNITY_BADGES_WRITE",
+          "COMMUNITY_NOTIFICATIONS_WRITE"
         ]
       }
     },
