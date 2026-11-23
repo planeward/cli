@@ -48,6 +48,13 @@ tags:
     description: CRM invoices
   - name: Payments
     description: CRM payments and completed purchases from any checkout
+  - name: Balances
+    description: >-
+      Revenue share balances (Commerce, Transactions). Balances read/write
+      scopes; needs the Commerce app, and writes need Commerce manage. Writes
+      require a `reference`, unique per account: a retry with the same
+      reference returns the first entry (`200`, `created: false`). A debit may
+      take a balance below zero.
   - name: Meta
     description: Meta Purchase conversion log, retry, and offline CSV export. Payments read/write scopes.
   - name: Chats
@@ -249,6 +256,45 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/TaskNotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /tasks/{taskId}/move:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    post:
+      tags: [Tasks]
+      summary: Move a task to another project
+      operationId: moveTask
+      description: >-
+        Moves the task to another project in the same workspace. Its subtasks
+        move with it; a subtask moved on its own leaves its parent. Each task
+        goes to `statusId` (task only) or the target status with the same
+        name, else the first of the same type, else the first status, at the
+        end of the column. Milestone and cycle are cleared. The label is kept
+        when the target project has a label with the same name, otherwise
+        removed. Comments, checklist, attachments and assignees move with the
+        task. Answers 400 when an assigned person or role can't be assigned in
+        the target project, for support tasks, archived tasks, archived
+        projects and the task's own project; 409 when the target status is at
+        its blocking WIP limit or `expectedVersion` is stale. Emits
+        `task.moved` for each moved task.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskMove"
+      responses:
+        "200":
+          $ref: "#/components/responses/TaskItem"
+        "400":
+          $ref: "#/components/responses/TaskBadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/TaskNotFound"
+        "409":
+          $ref: "#/components/responses/TaskConflict"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /customers:
@@ -1618,6 +1664,45 @@ paths:
           in: query
           schema:
             type: string
+        - name: statuses
+          in: query
+          description: Payments with any of these statuses. Repeat the param or send a comma list.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [PENDING, COMPLETED, FAILED, REFUNDED]
+        - name: from
+          in: query
+          description: >-
+            Payment date (the paid date, else the recorded date) on or after
+            this moment. ISO-8601 with seconds and an offset. `from` after `to`
+            returns `400`.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: Payment date on or before this moment. ISO-8601 with seconds and an offset.
+          schema:
+            type: string
+            format: date-time
+        - name: productId
+          in: query
+          description: Payments for any plan of this product.
+          schema:
+            type: string
+        - name: metaStatuses
+          in: query
+          description: Payments whose Meta Purchase conversion has any of these statuses. Repeat the param or send a comma list.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/MetaConversionStatus"
       responses:
         "200":
           $ref: "#/components/responses/PaymentList"
@@ -1634,6 +1719,16 @@ paths:
       responses:
         "201":
           $ref: "#/components/responses/PaymentItem"
+        "400":
+          description: >-
+            Invalid body, or a refused create: an `externalRef` already used
+            by another customer's or source's payment (`{ "error": "This
+            reference is already used by another payment." }`), or an invoice
+            that can't take this payment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /payments/{paymentId}:
     parameters:
       - $ref: "#/components/parameters/PaymentId"
@@ -1655,7 +1750,8 @@ paths:
         `paidAt`. Invoice payments cannot change `amount` (edit the invoice).
         `customerId` is locked once the payment granted a plan, paid an
         invoice, or posted to the ledger. Changing `amount` and refunding in
-        one request is rejected.
+        one request is rejected. Omit `paidAt` to keep the payment's current
+        paid date.
       operationId: updatePayment
       requestBody:
         content:
@@ -1672,11 +1768,129 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/PaymentItem"
+  /balances:
+    get:
+      tags: [Balances]
+      summary: Get a balance
+      operationId: getBalance
+      parameters:
+        - $ref: "#/components/parameters/BalanceAccountKind"
+        - $ref: "#/components/parameters/BalanceAccountId"
+      responses:
+        "200":
+          description: One account's balance; `accountId` is null when it has no wallet
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    allOf:
+                      - $ref: "#/components/schemas/BalanceSummary"
+                      - type: object
+                        required: [account, accountId]
+                        properties:
+                          account:
+                            $ref: "#/components/schemas/BalanceAccount"
+                          accountId:
+                            type: string
+                            nullable: true
+  /balances/entries:
+    get:
+      tags: [Balances]
+      summary: List balance entries
+      description: One account's entries, newest first.
+      operationId: listBalanceEntries
+      parameters:
+        - $ref: "#/components/parameters/BalanceAccountKind"
+        - $ref: "#/components/parameters/BalanceAccountId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Paginated entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BalanceEntry"
+                  meta:
+                    $ref: "#/components/schemas/ListMeta"
+  /balances/credit:
+    post:
+      tags: [Balances]
+      summary: Credit a balance
+      description: Settled at once; the recipient is notified (never the treasury). Crediting an active customer opens their wallet.
+      operationId: creditBalance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BalanceCreditWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/BalanceEntryResult"
+        "200":
+          $ref: "#/components/responses/BalanceEntryResult"
+  /balances/debit:
+    post:
+      tags: [Balances]
+      summary: Debit a balance
+      description: May take the balance below zero. Never opens a wallet.
+      operationId: debitBalance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BalanceDebitWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/BalanceEntryResult"
+        "200":
+          $ref: "#/components/responses/BalanceEntryResult"
+  /balances/transfer:
+    post:
+      tags: [Balances]
+      summary: Transfer between balances
+      description: A `SYSTEM` debit on `from` and a `SYSTEM` credit on `to`, both or neither. `from` and `to` must differ; the debit may take `from` below zero.
+      operationId: transferBalance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BalanceTransferWrite"
+      responses:
+        "201":
+          $ref: "#/components/responses/BalanceTransferResult"
+        "200":
+          $ref: "#/components/responses/BalanceTransferResult"
   /purchases:
     post:
       tags: [Payments]
       summary: Record a purchase
-      description: Idempotent on `externalRef`. `201` when recorded, `200` when already recorded. Amount is integer minor units.
+      description: >-
+        Idempotent on `externalRef`. `201` when recorded, `200` when already
+        recorded: an exact replay (same buyer, source and plan) returns the
+        first sale with `status: already_recorded` and never records a second
+        one; a replay with a different `amount` also returns the first sale
+        (`200`), with `warning: amount_mismatch`. An `externalRef` already used
+        by another buyer, source or plan returns `400` "This reference is
+        already used by another payment." Amount is integer minor units. With `productPlanId`
+        the sale is a catalog plan: `amount` defaults to the plan's price, and
+        the buyer gets the same access, revenue share split (`affiliateCode`
+        credits an affiliate) and messages as a checkout sale. Selling a plan
+        needs the `BALANCES_WRITE` scope (`ALL_ACCESS` counts) besides
+        `PAYMENTS_WRITE`, and `commerce:manage` on the key; without either the
+        call returns `403`.
       operationId: recordPurchase
       requestBody:
         required: true
@@ -1689,6 +1903,27 @@ paths:
           $ref: "#/components/responses/PurchaseItem"
         "200":
           $ref: "#/components/responses/PurchaseItem"
+        "400":
+          description: >-
+            Invalid body, or a refused sale: an `externalRef` already used by
+            another buyer, source or plan (`{ "error": "This reference is
+            already used by another payment." }`), or a plan that can't be
+            sold this way.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >-
+            Missing scope (`missingScope` names it); `productPlanId` without
+            the `BALANCES_WRITE` scope: `{ "error": "Selling a catalog plan
+            needs the balances:write scope." }`; or `productPlanId` without
+            `commerce:manage`: `{ "error": "You do not have permission to sell
+            catalog plans." }`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
   /purchases/{externalRef}/reverse:
     parameters:
       - $ref: "#/components/parameters/ExternalRef"
@@ -2842,6 +3077,18 @@ components:
       type: http
       scheme: bearer
   parameters:
+    BalanceAccountKind:
+      name: kind
+      in: query
+      required: true
+      schema:
+        $ref: "#/components/schemas/BalanceAccountKind"
+    BalanceAccountId:
+      name: id
+      in: query
+      description: Workspace membership id, community membership id, or customer id. Required unless `kind` is `treasury`.
+      schema:
+        type: string
     Limit:
       name: limit
       in: query
@@ -3745,6 +3992,24 @@ components:
                 since, the update is rejected with 409 `Task was modified by
                 someone else. Refresh and retry.` Omit it and the last write
                 wins.
+    TaskMove:
+      type: object
+      required: [projectId]
+      properties:
+        projectId:
+          type: string
+          description: The project to move the task to, in the same workspace.
+        statusId:
+          type: string
+          description: >
+            A status in the target project. Omit it to map the current status
+            (same name, else same type, else the first status).
+        expectedVersion:
+          type: integer
+          minimum: 1
+          description: >
+            The task `version` you last read. When the task has changed since,
+            the move is rejected with 409.
     CustomerType:
       type: object
       properties:
@@ -4050,6 +4315,11 @@ components:
               type: string
             name:
               type: string
+        productIds:
+          type: array
+          items:
+            type: string
+          description: Products whose buyers are registered once they pay.
         showInCommunity:
           type: boolean
           description: Visible to community apps. Staff turn it on in the event's settings.
@@ -4097,6 +4367,14 @@ components:
           type: string
           nullable: true
           description: Each registration opens a deal in the first open stage.
+        productIds:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+          description: >
+            Products whose buyers are registered once they pay. On update,
+            replaces the whole set; omit to keep it.
     EventRegistration:
       type: object
       required: [id, eventId, contactId, attendance, registeredAt]
@@ -4111,6 +4389,12 @@ components:
           type: string
           nullable: true
           description: Not sent to app callers.
+        paymentId:
+          type: string
+          nullable: true
+          description: >
+            The payment that bought the seat; null for seats taken any other
+            way. Not sent to app callers.
         registeredAt:
           type: string
           format: date-time
@@ -5094,7 +5378,18 @@ components:
     PaymentSource:
       type: string
       enum:
-        [INVOICE, MANUAL, STRIPE, XENDIT, RECEIPT, API, WORKFLOW, MCP, IMPORT]
+        [
+          INVOICE,
+          MANUAL,
+          STRIPE,
+          XENDIT,
+          RECEIPT,
+          API,
+          WORKFLOW,
+          MCP,
+          IMPORT,
+          POLAR,
+        ]
     PaymentItem:
       type: object
       required: [name, quantity, unitAmount]
@@ -5110,18 +5405,33 @@ components:
           description: Minor units
     PurchaseWrite:
       type: object
-      required: [externalRef, amount, buyer]
+      required: [externalRef, buyer]
       properties:
         externalRef:
           type: string
+          description: >-
+            Your order id; the idempotency key, unique per workspace. An exact
+            replay returns the first sale (`already_recorded`); a reference
+            already used by another buyer, source or plan returns `400`.
         amount:
           type: integer
-          description: Integer minor units
+          description: Integer minor units. Required unless `productPlanId` is set; with a plan it defaults to the plan's price.
+        productPlanId:
+          type: string
+          description: >-
+            Catalog plan sold. Gives the buyer the plan's access, splits
+            revenue share and sends the checkout messages. Needs the
+            `BALANCES_WRITE` scope (`ALL_ACCESS` counts) besides
+            `PAYMENTS_WRITE`, and `commerce:manage`; otherwise `403`.
+        affiliateCode:
+          type: string
+          description: Affiliate referral code credited in the plan's revenue share split. Needs `productPlanId`.
         currency:
           type: string
         paidAt:
           type: string
           format: date-time
+          description: When the buyer paid (ISO-8601). A value that isn't a valid date returns `400`.
         sourceLabel:
           type: string
         opportunityId:
@@ -5231,12 +5541,153 @@ components:
           type: integer
         status:
           type: string
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When the money was received. ISO-8601 with seconds and an offset
+            (`Z` or `±HH:MM`), such as `2026-11-01T09:30:00Z`. On create it
+            defaults to now for a `COMPLETED` payment. On update, omit it to
+            keep the current paid date. A value that is invalid or has no
+            offset returns `400`.
         note:
           type: string
           nullable: true
         invoiceId:
           type: string
           nullable: true
+        externalRef:
+          type: string
+          description: >-
+            Create only. Idempotency key, unique per workspace: a repeat with
+            the same `externalRef`, customer and source returns the first
+            payment instead of recording another. An `externalRef` already
+            used by a payment of another customer or source returns `400`
+            "This reference is already used by another payment."
+    BalanceAccountKind:
+      type: string
+      enum: [treasury, workspace_member, community_member, customer]
+    BalanceAccount:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          $ref: "#/components/schemas/BalanceAccountKind"
+        id:
+          type: string
+          description: Workspace membership id, community membership id, or customer id. Required unless `kind` is `treasury`.
+    BalanceSummary:
+      type: object
+      required: [settled, pending, available]
+      properties:
+        settled:
+          type: integer
+          description: Settled credits minus settled debits
+        pending:
+          type: integer
+          description: Credits not yet available
+        available:
+          type: integer
+          description: Settled minus open withdrawals; may be negative
+    BalanceEntry:
+      type: object
+      required:
+        [id, accountId, amount, direction, type, description, source, createdAt]
+      properties:
+        id:
+          type: string
+        accountId:
+          type: string
+        amount:
+          type: integer
+        direction:
+          type: string
+          enum: [CREDIT, DEBIT]
+        type:
+          type: string
+          enum: [SHARE, REFERRAL, DEPOSIT, WITHDRAWAL, REVERSAL, SYSTEM]
+        description:
+          type: string
+        source:
+          type: string
+          enum: [MANUAL, WORKFLOW, API, MCP]
+        reference:
+          type: string
+          nullable: true
+        availableAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    BalanceCreditWrite:
+      type: object
+      required: [account, amount, description, reference]
+      properties:
+        account:
+          $ref: "#/components/schemas/BalanceAccount"
+        amount:
+          type: integer
+          minimum: 1
+          description: Integer minor units
+        description:
+          type: string
+        reference:
+          type: string
+          description: Idempotency key, unique per account
+        type:
+          type: string
+          enum: [SHARE, DEPOSIT]
+          default: SHARE
+    BalanceDebitWrite:
+      type: object
+      required: [account, amount, description, reference]
+      properties:
+        account:
+          $ref: "#/components/schemas/BalanceAccount"
+        amount:
+          type: integer
+          minimum: 1
+          description: Integer minor units
+        description:
+          type: string
+        reference:
+          type: string
+          description: Idempotency key, unique per account
+        type:
+          type: string
+          enum: [SYSTEM, WITHDRAWAL]
+          default: SYSTEM
+    BalanceTransferWrite:
+      type: object
+      required: [from, to, amount, description, reference]
+      properties:
+        from:
+          $ref: "#/components/schemas/BalanceAccount"
+        to:
+          $ref: "#/components/schemas/BalanceAccount"
+        amount:
+          type: integer
+          minimum: 1
+          description: Integer minor units
+        description:
+          type: string
+        reference:
+          type: string
+          description: Idempotency key; stored on both legs
+    BalanceEntryResult:
+      type: object
+      required: [entry, created, balance]
+      properties:
+        entry:
+          $ref: "#/components/schemas/BalanceEntry"
+        created:
+          type: boolean
+          description: False when `reference` was already posted on this account
+        balance:
+          $ref: "#/components/schemas/BalanceSummary"
     Channel:
       type: object
       required: [id, workspaceId, name, slug, createdAt, updatedAt]
@@ -6557,6 +7008,38 @@ components:
             properties:
               data:
                 $ref: "#/components/schemas/Payment"
+    BalanceEntryResult:
+      description: Posted entry (`201`) or the entry first posted with this reference (`200`)
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/BalanceEntryResult"
+    BalanceTransferResult:
+      description: Posted transfer (`201`) or the one first posted with this reference (`200`)
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: object
+                required: [debit, credit, created, fromBalance, toBalance]
+                properties:
+                  debit:
+                    $ref: "#/components/schemas/BalanceEntry"
+                  credit:
+                    $ref: "#/components/schemas/BalanceEntry"
+                  created:
+                    type: boolean
+                  fromBalance:
+                    $ref: "#/components/schemas/BalanceSummary"
+                  toBalance:
+                    $ref: "#/components/schemas/BalanceSummary"
     PurchaseItem:
       description: Recorded or already-recorded purchase
       content:
@@ -6575,6 +7058,10 @@ components:
                   warning:
                     type: string
                     enum: [amount_mismatch]
+                    description: >-
+                      Set on a replay (`already_recorded`) whose `amount`
+                      differs from the first sale's. The first sale is
+                      returned unchanged.
                   payment:
                     $ref: "#/components/schemas/Payment"
                   siteVisit:
