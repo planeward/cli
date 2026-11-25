@@ -1,7 +1,10 @@
-/** `planeward init`: writes `planeward.json` for an existing app. */
+/**
+ * `planeward init`: writes `planeward.json` for an existing app, plus a
+ * starter `/.well-known/planeward-permissions` route in a Next.js app.
+ */
 import { existsSync, readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 
 import { MANIFEST_FILE_NAME, type PlanewardManifest } from "../manifest";
@@ -22,7 +25,12 @@ export function parseInitArgs(argv: readonly string[]): InitOptions {
   return { yes: values.yes, help: values.help };
 }
 
-type PackageJson = { name?: unknown; scripts?: Record<string, unknown> };
+type PackageJson = {
+  name?: unknown;
+  scripts?: Record<string, unknown>;
+  dependencies?: Record<string, unknown>;
+  devDependencies?: Record<string, unknown>;
+};
 
 const DEFAULT_PORT = 3000;
 
@@ -127,6 +135,83 @@ export function inferManifest(
   };
 }
 
+const hasDependency = (pkg: PackageJson | null, name: string) =>
+  Boolean(pkg?.dependencies?.[name] ?? pkg?.devDependencies?.[name]);
+
+export const PERMISSIONS_ROUTE_SOURCE = `import { definePermissions } from "@planeward/sdk/server";
+
+/**
+ * Permissions this app declares. Planeward reads them from
+ * /.well-known/planeward-permissions on your Experience URL's origin (a 404
+ * means none) and lets the workspace grant each one. A viewer's granted keys
+ * arrive in the viewer token's \`permissions\` claim: check them with
+ * \`can(viewer, "content.manage")\`. Run \`planeward permissions\` to check this
+ * file, and grant keys in the emulator's Permissions tab.
+ */
+const permissions = definePermissions({
+  // Granted per workspace role; in dashboard tokens.
+  dashboard: [
+    { key: "settings.manage", name: "Manage app settings", default: "off" },
+  ],
+  // Granted to @everyone, membership plans and staff roles; in experience tokens.
+  community: [
+    { key: "content.view", name: "View content", default: "on" },
+    {
+      key: "content.manage",
+      name: "Manage content",
+      description: "Create, edit and delete content in this app.",
+      default: "off",
+    },
+  ],
+});
+
+export function GET() {
+  return Response.json(permissions);
+}
+`;
+
+export type PermissionsRoute = {
+  /** Path relative to the app folder. */
+  path: string;
+  content: string;
+};
+
+/**
+ * A starter `/.well-known/planeward-permissions` route for a Next.js app
+ * (App Router, in `src/app` when the app has `src/`). Null with a note for
+ * other frameworks, or when the route exists.
+ */
+export function inferPermissionsRoute(dir: string): {
+  route: PermissionsRoute | null;
+  notes: string[];
+} {
+  const pkg = readPackageJson(dir);
+  const devScript = pkg?.scripts?.dev;
+  const next =
+    hasDependency(pkg, "next") ||
+    (typeof devScript === "string" && /\bnext\s+dev\b/.test(devScript));
+  if (!next) {
+    return {
+      route: null,
+      notes: [
+        "Not a Next.js app, so no permissions route was created. To declare permissions, serve definePermissions() from @planeward/sdk/server as JSON at GET /.well-known/planeward-permissions.",
+      ],
+    };
+  }
+  const appDir = existsSync(join(dir, "src")) ? "src/app" : "app";
+  const extension = existsSync(join(dir, "tsconfig.json")) ? "ts" : "js";
+  const path = `${appDir}/.well-known/planeward-permissions/route.${extension}`;
+  if (existsSync(join(dir, path))) {
+    return { route: null, notes: [`${path} already exists; left as is.`] };
+  }
+  const notes = hasDependency(pkg, "@planeward/sdk")
+    ? []
+    : [
+        `The permissions route imports @planeward/sdk: npm install @planeward/sdk`,
+      ];
+  return { route: { path, content: PERMISSIONS_ROUTE_SOURCE }, notes };
+}
+
 /** Asks a yes/no question on the terminal; Enter means yes, EOF means no. */
 export function askConfirm(
   question: string,
@@ -173,13 +258,22 @@ export async function runInit(
     );
   }
   const json = `${JSON.stringify(manifest, null, 2)}\n`;
+  const { route, notes: routeNotes } = inferPermissionsRoute(cwd);
 
   output.plain(`\n${json}`);
-  for (const note of notes) output.warn(note);
+  if (route) {
+    output.info(
+      `Also creates ${route.path}, a starter permissions declaration.`
+    );
+  }
+  for (const note of [...notes, ...routeNotes]) output.warn(note);
 
   if (!options.yes) {
     const confirm = deps.confirm ?? ((question) => askConfirm(question));
-    if (!(await confirm(`Write ${MANIFEST_FILE_NAME}? (Y/n) `))) {
+    const files = route
+      ? `${MANIFEST_FILE_NAME} and ${route.path}`
+      : MANIFEST_FILE_NAME;
+    if (!(await confirm(`Write ${files}? (Y/n) `))) {
       output.info("Nothing written.");
       return 1;
     }
@@ -194,6 +288,17 @@ export async function runInit(
     throw error;
   }
   output.info(`Wrote ${file}.`);
+  if (route) {
+    const routeFile = join(cwd, route.path);
+    await mkdir(dirname(routeFile), { recursive: true });
+    try {
+      await writeFile(routeFile, route.content, { flag: "wx" });
+      output.info(`Wrote ${routeFile}.`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      output.warn(`${route.path} already exists; left as is.`);
+    }
+  }
   const warning = gitignoreWarning(cwd);
   if (warning) output.warn(warning);
   output.info(

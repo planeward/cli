@@ -5,6 +5,7 @@ import { COMMAND_HELP, isCommandName, MAIN_HELP } from "./help";
 import { parseInitArgs, runInit } from "./init";
 import { createOutput, type Output } from "./output";
 import { packageVersion } from "./package-info";
+import { parsePermissionsArgs, runPermissions } from "./permissions";
 import { parseTriggerArgs, runTrigger } from "./trigger";
 
 export async function main(
@@ -49,6 +50,12 @@ export async function main(
         const options = parseInitArgs(rest);
         if (!options.help) return await runInit(options, { output });
         output.plain(COMMAND_HELP.init);
+        return 0;
+      }
+      case "permissions": {
+        const options = parsePermissionsArgs(rest);
+        if (!options.help) return await runPermissions(options, { output });
+        output.plain(COMMAND_HELP.permissions);
         return 0;
       }
     }

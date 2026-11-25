@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/package.json",
   "name": "planeward",
   "version": "0.1.6",
-  "description": "Local CLI for building Planeward community apps: `planeward dev` runs an emulator of the Planeward host, API and webhooks.",
+  "description": "Local CLI for building Planeward apps: `planeward dev` runs an emulator of the Planeward host, API, webhooks and app permissions.",
   "license": "MIT",
   "type": "module",
   "homepage": "https://github.com/planeward/cli#readme",
@@ -50,7 +50,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",
-    "@planeward/sdk": "^0.2.3",
+    "@planeward/sdk": "^0.2.4",
     "hono": "^4.13.16",
     "jose": "^6.2.15",
     "open": "^11.0.4",

@@ -4177,6 +4177,7 @@ components:
           IMPORT,
           MANUAL,
           API,
+          CHECKOUT,
         ]
     ContactWrite:
       type: object

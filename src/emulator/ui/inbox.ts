@@ -13,6 +13,9 @@ import type {
   SetViewerRequest,
 } from "../contract";
 
+/** The part of the viewer opening a notification looks at. */
+type ViewerRef = Pick<EmulatorViewer, "memberId" | "role">;
+
 /** Filter value that follows the viewer picked in the top bar (the default). */
 export const INBOX_VIEWER = "@viewer";
 
@@ -119,7 +122,7 @@ export function nextDeepLink(
  * with the member role, in the Experience view. `null` means already so.
  */
 export function openNotificationSteps(
-  current: { viewer: EmulatorViewer; view: AppView },
+  current: { viewer: ViewerRef; view: AppView },
   notification: FixtureNotification
 ): { viewer: SetViewerRequest | null; view: "experience" | null } {
   const viewer: SetViewerRequest = {
@@ -143,7 +146,7 @@ export function openNotificationSteps(
  */
 export function activeDeepLink(
   deepLink: DeepLink | null,
-  current: { viewer: EmulatorViewer; view: AppView }
+  current: { viewer: ViewerRef; view: AppView }
 ): DeepLink | null {
   return deepLink &&
     current.view === "experience" &&
@@ -173,19 +176,24 @@ export function appFrameSrc(
   );
 }
 
-/** A new key remounts the frame with a fresh token cache. */
+/**
+ * A new key remounts the frame with a fresh token cache. `reloadCount` goes
+ * up on a reset and whenever the permissions a token carries may change.
+ */
 export function appFrameKey(parts: {
   viewerId: string;
   role: AppViewerRole;
+  planId: string | null;
   view: AppView;
-  resetCount: number;
+  reloadCount: number;
   deepLink: DeepLink | null;
 }): string {
   return [
     parts.viewerId,
     parts.role,
+    parts.planId ?? "no-plan",
     parts.view,
-    parts.resetCount,
+    parts.reloadCount,
     parts.deepLink ? `link-${parts.deepLink.nonce}` : "plain",
   ].join(":");
 }

@@ -4,6 +4,8 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
+import { validateGrants } from "../../commands/manifest-file";
+import type { PermissionGrants } from "../../manifest";
 import {
   EMULATOR_BASE_PATH,
   EMULATOR_ROUTES,
@@ -14,11 +16,13 @@ import {
   type EmulatorStateResponse,
   type EmulatorWebhookEventName,
   type MintViewerTokenResponse,
+  type PermissionsDeclarationResponse,
   type TriggerRequest,
   type WebhookDeliveryEntry,
   type WebhookDeliveryListResponse,
   type WebhookDeliveryResponse,
 } from "../contract";
+import { normalizeGrants, resolvePermissions } from "../permissions";
 import { applyActivity } from "./activity";
 import type { Domain } from "./domain";
 import { ApiError } from "./errors";
@@ -27,6 +31,7 @@ import {
   signViewerToken,
   type EmulatorKeys,
 } from "./keys";
+import type { PermissionsSource } from "./permissions";
 import type { RequestLog } from "./requests";
 import type { EmulatorBus, EmulatorStore } from "./store";
 import { buildTriggerEvent, TriggerError } from "./trigger";
@@ -39,6 +44,10 @@ export type EmulatorRouteDeps = {
   requests: RequestLog;
   bus: EmulatorBus;
   keys: EmulatorKeys;
+  /** The app's permissions declaration. */
+  permissions: PermissionsSource;
+  /** Saves grants to planeward.json `dev.grants`. */
+  saveGrants: (grants: PermissionGrants) => Promise<void>;
   /** Current emulator base URL; the token `iss`. */
   baseUrl: () => string;
   /** Also accept {@link DEV_UI_ORIGIN} (the Vite dev server). */
@@ -99,7 +108,7 @@ const fail = (c: Context, error: unknown) =>
       );
 
 export function createEmulatorRoutes(deps: EmulatorRouteDeps): Hono {
-  const { store, domain, webhooks, requests, bus, keys } = deps;
+  const { store, domain, webhooks, requests, bus, keys, permissions } = deps;
   const app = new Hono();
 
   // Only the emulator's own UI (and, opted in, the Vite dev UI) may call
@@ -131,6 +140,7 @@ export function createEmulatorRoutes(deps: EmulatorRouteDeps): Hono {
     const body = (await readJsonBody(c)) as {
       memberId?: unknown;
       role?: unknown;
+      planId?: unknown;
     };
     const role = body.role as AppViewerRole;
     if (role !== "member" && role !== "admin") {
@@ -139,7 +149,19 @@ export function createEmulatorRoutes(deps: EmulatorRouteDeps): Hono {
     if (typeof body.memberId !== "string" || !domain.member(body.memberId)) {
       throw new ApiError("Member not found.", 404);
     }
-    store.viewer = { memberId: body.memberId, role };
+    const planId =
+      body.planId === undefined ? store.viewer.planId : body.planId;
+    if (
+      planId !== null &&
+      !store.app.plans.some((plan) => plan.id === planId)
+    ) {
+      throw new ApiError("planId must be null or a dev.plans id.", 400);
+    }
+    store.viewer = {
+      memberId: body.memberId,
+      role,
+      planId: planId as string | null,
+    };
     store.changed();
     return state(c);
   });
@@ -182,6 +204,12 @@ export function createEmulatorRoutes(deps: EmulatorRouteDeps): Hono {
     // The Dashboard is staff-only: production always mints it as admin.
     const role: AppViewerRole =
       store.view === "dashboard" ? "admin" : store.viewer.role;
+    const declaration = await permissions.read();
+    const granted = resolvePermissions(
+      declaration.status === "ok" ? declaration.declaration : null,
+      store.grants,
+      { view: store.view, role, planId: store.viewer.planId }
+    );
     const claims = buildViewerTokenClaims({
       issuer: deps.baseUrl(),
       appId: store.app.appId,
@@ -195,12 +223,14 @@ export function createEmulatorRoutes(deps: EmulatorRouteDeps): Hono {
         name: member.displayName,
         avatar: member.avatarUrl,
       },
+      permissions: granted,
       nowMs: store.now().getTime(),
     });
     const { token, expiresAt } = await signViewerToken(keys, claims);
     return c.json({
       data: {
         token,
+        permissions: granted,
         expiresAt,
         context: {
           view: store.view,
@@ -209,6 +239,24 @@ export function createEmulatorRoutes(deps: EmulatorRouteDeps): Hono {
         },
       },
     } satisfies MintViewerTokenResponse);
+  });
+
+  app.get(EMULATOR_ROUTES.permissions, async (c) =>
+    c.json({
+      data: await permissions.read({ refresh: c.req.query("refresh") === "1" }),
+    } satisfies PermissionsDeclarationResponse)
+  );
+
+  app.put(EMULATOR_ROUTES.grants, async (c) => {
+    const parsed = validateGrants(await readJsonBody(c));
+    if (!parsed.ok) {
+      throw new ApiError(`Invalid grants: ${parsed.issues.join(" ")}`, 400);
+    }
+    const grants = normalizeGrants(parsed.grants);
+    await deps.saveGrants(grants);
+    store.grants = grants;
+    store.changed();
+    return state(c);
   });
 
   app.get(EMULATOR_ROUTES.requests, (c) =>

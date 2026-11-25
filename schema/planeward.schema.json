@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "planeward.schema.json",
   "title": "Planeward app manifest",
-  "description": "planeward.json: how `planeward dev` runs and emulates a Planeward community app.",
+  "description": "planeward.json: how `planeward dev` runs and emulates a Planeward app.",
   "type": "object",
   "additionalProperties": false,
   "required": ["name", "slug", "experiencePath", "scopes", "dev"],
@@ -24,12 +24,12 @@
     "experiencePath": {
       "type": "string",
       "pattern": "^/",
-      "description": "Path on dev.url rendered in the Experience view."
+      "description": "Path on dev.url rendered in the Experience view (members, inside the app's community channel)."
     },
     "dashboardPath": {
       "type": "string",
       "pattern": "^/",
-      "description": "Path on dev.url rendered in the Dashboard view (admins)."
+      "description": "Path on dev.url rendered in the Dashboard view (workspace staff)."
     },
     "webhookPath": {
       "type": "string",
@@ -70,6 +70,76 @@
           "type": "string",
           "pattern": "^https?://",
           "description": "Origin the app serves on, e.g. `http://localhost:3005`."
+        },
+        "plans": {
+          "type": "array",
+          "description": "Fake membership plans. The emulator can simulate a member on each one, and dev.grants.plans grants community permissions to them.",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "name"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                "description": "Plan id, e.g. `plan_pro`; unique."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "description": "Shown in the emulator."
+              }
+            }
+          }
+        },
+        "grants": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Permission grants for the app's /.well-known/planeward-permissions keys. The emulator's Permissions panel writes this. Community keys resolve like production: the declared default, then everyone, then the member's plans (any \"on\" beats \"off\"). Dashboard keys are true or false for the simulated staff role, else the declared default.",
+          "properties": {
+            "everyone": {
+              "type": "object",
+              "description": "Community keys for @everyone (every member): \"on\" or \"off\"; a key left out is Unset.",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+                "maxLength": 64
+              },
+              "additionalProperties": {
+                "enum": ["on", "off"]
+              }
+            },
+            "plans": {
+              "type": "object",
+              "description": "Community keys per dev.plans id.",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "description": "Community permission keys mapped to \"on\" or \"off\"; a key left out is Unset.",
+                "propertyNames": {
+                  "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+                  "maxLength": 64
+                },
+                "additionalProperties": {
+                  "enum": ["on", "off"]
+                }
+              }
+            },
+            "dashboard": {
+              "type": "object",
+              "description": "Dashboard keys mapped to true (on) or false (off); a key left out uses the declared default.",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+                "maxLength": 64
+              },
+              "additionalProperties": {
+                "type": "boolean"
+              }
+            }
+          }
         }
       }
     }

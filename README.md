@@ -1,14 +1,17 @@
 # planeward
 
-CLI for building Planeward community apps on your machine. `planeward dev` runs
-an emulator of the Planeward host, the v1 API and app webhooks on `127.0.0.1`,
+CLI for building Planeward apps on your machine. A Planeward app runs as an
+Experience (`/experience`, for members, inside a community app channel) and a
+Dashboard (`/dashboard`, for workspace staff). `planeward dev` runs an
+emulator of the Planeward host, the v1 API and app webhooks on `127.0.0.1`,
 starts your app's dev server with the `PLANEWARD_*` variables pointing at it,
 and opens the emulator in your browser. No Planeward account, tunnel or
 public URL is needed.
 
 The emulator is built on [`@planeward/sdk`](https://www.npmjs.com/package/@planeward/sdk)
-(0.2.1 or later), the same package your app uses, so tokens it mints pass
-`verifyPlanewardToken`, its webhooks pass `verifyPlanewardWebhook`, and every
+(0.2.4 or later), the same package your app uses, so tokens it mints pass
+`verifyPlanewardToken`, its webhooks pass `verifyPlanewardWebhook`, its
+permission checks use `validatePermissionsResponse`, and every
 `createPlanewardClient` method works against it unchanged.
 
 It needs Node.js 24 or later.
@@ -64,11 +67,13 @@ file on unpkg for the installed version, for example
 | `name`           | yes      | Display name in the emulator (1–80 characters).                                                |
 | `slug`           | yes      | 2–48 lowercase letters, digits or dashes. The local app id is `<slug>-local`.                  |
 | `experiencePath` | yes      | Path on `dev.url` shown in the Experience view, e.g. `/experience`.                            |
-| `dashboardPath`  | no       | Path on `dev.url` shown in the Dashboard view (admins).                                        |
+| `dashboardPath`  | no       | Path on `dev.url` shown in the Dashboard view (workspace staff).                               |
 | `webhookPath`    | no       | Path on `dev.url` that receives signed webhooks. Without it, every webhook is skipped.         |
 | `scopes`         | yes      | Scopes the emulator grants, with no duplicates. Any of the app-grantable scopes below.         |
 | `dev.command`    | yes      | Shell command that starts the app, e.g. `next dev --port 3005`. Runs in the manifest's folder. |
 | `dev.url`        | yes      | Origin the app serves on, e.g. `http://localhost:3005`.                                        |
+| `dev.plans`      | no       | Fake membership plans, `[{ "id", "name" }]` (up to 20, unique ids), to simulate plan members.  |
+| `dev.grants`     | no       | Permission grants. The emulator's Permissions tab writes it; see [Permissions](#permissions).  |
 
 App-grantable scopes: `COMMUNITY_MEMBERS_READ`, `COMMUNITY_MESSAGES_READ`,
 `COMMUNITY_MESSAGES_WRITE`, `COURSES_READ`, `COURSE_PROGRESS_WRITE`,
@@ -90,6 +95,53 @@ App-grantable scopes: `COMMUNITY_MEMBERS_READ`, `COMMUNITY_MESSAGES_READ`,
 
 An invalid manifest stops `planeward dev` with one line per problem, such as
 `scopes[1]: "ADMIN" is not an app scope` or `dev: unknown field "port"`.
+
+## Permissions
+
+Apps can declare their own permissions at
+`GET {dev.url origin}/.well-known/planeward-permissions`, with
+`definePermissions()` from `@planeward/sdk/server` (a 404 means none). See
+the [SDK README](https://www.npmjs.com/package/@planeward/sdk#permissions)
+for the format and rules. Planeward puts the keys granted to a viewer in the
+viewer token's `permissions` claim; check them with `can(viewer, key)`.
+
+The emulator's **Permissions** tab reads the declaration from `dev.url`
+(press Refresh after you change it) and lets you:
+
+- **Simulate** a viewer: a member, a member on each `dev.plans` plan, an
+  admin in the Experience view, or the Dashboard (staff).
+- **Grant community keys** On, Unset or Off for `@everyone` or for a plan.
+- **Grant dashboard keys** on or off.
+
+Every change resolves the keys with Planeward's rules, saves them to
+`dev.grants`, and reloads the app with a re-minted token. Community keys
+start at the declared `default`, then `@everyone` applies, then the member's
+plans (any On beats Off across plans). Dashboard keys are on or off for the
+simulated staff role, else the declared default.
+
+```json
+{
+  "dev": {
+    "command": "next dev --port 3005",
+    "url": "http://localhost:3005",
+    "plans": [
+      { "id": "plan_basic", "name": "Basic" },
+      { "id": "plan_pro", "name": "Pro" }
+    ],
+    "grants": {
+      "everyone": { "posts.create": "on" },
+      "plans": { "plan_pro": { "posts.moderate": "on" } },
+      "dashboard": { "reports.export": true }
+    }
+  }
+}
+```
+
+`dev.grants` has three optional maps, each keyed by permission key:
+`everyone` (`"on"` or `"off"`; a missing key is Unset), `plans` (one such
+map per `dev.plans` id) and `dashboard` (`true` or `false`; a missing key
+uses the declared default). Grants for keys the app no longer declares are
+ignored.
 
 ## Commands
 
@@ -213,8 +265,11 @@ Events: `app.installed`, `app.uninstalled`,
 planeward init [--yes]
 ```
 
-This command creates `planeward.json` in the current folder. It never
-overwrites an existing one. It fills the fields like this:
+This command creates `planeward.json` in the current folder, and in a
+Next.js app also a starter permissions route at
+`app/.well-known/planeward-permissions/route.ts` (`src/app/...` when the app
+has `src/`, `route.js` without a `tsconfig.json`). It never overwrites an
+existing file. It fills the manifest like this:
 
 - `name` and `slug` come from the `package.json` `name`, without the npm
   scope. Without a `package.json`, they come from the folder name.
@@ -228,7 +283,38 @@ overwrites an existing one. It fills the fields like this:
   `https://unpkg.com/planeward@<version>/schema/planeward.schema.json`.
 
 The command shows the manifest and asks before writing it. Pass `--yes` to
-skip the question.
+skip the question. The route declares a few example keys with
+`definePermissions()`; replace them with your own, and install
+`@planeward/sdk` if the app doesn't have it yet.
+
+### `planeward permissions`
+
+```
+planeward permissions [--url <origin>] [--manifest <path>]
+```
+
+This command fetches `/.well-known/planeward-permissions` from `dev.url`'s
+origin (or `--url`), checks it with the SDK's `validatePermissionsResponse`
+(the rules Planeward enforces), and prints the dashboard and community
+permissions as tables:
+
+```
+[planeward] Read http://localhost:3005/.well-known/planeward-permissions
+
+Dashboard (1): granted per workspace role
+  KEY              NAME                 DEFAULT  DESCRIPTION
+  settings.manage  Manage app settings  off
+
+Community (2): granted to @everyone, plans and staff roles
+  KEY             NAME            DEFAULT  DESCRIPTION
+  content.view    View content    on
+  content.manage  Manage content  off      Create, edit and delete content in this app.
+```
+
+A 404 means the app declares no permissions and exits 0. An invalid
+declaration prints one line per problem, such as
+`community[1].key: "posts.moderate" is listed twice.`, and exits 1. So do an
+unreachable app and any other HTTP status.
 
 ### `planeward --help`, `--version`
 
@@ -237,8 +323,9 @@ also pass `--help` to any command.
 
 ## What the emulator mirrors
 
-- **Viewer tokens:** RS256, with the same claims, issuer, audience and
-  5-minute expiry as production, plus `GET /api/auth/jwks`.
+- **Viewer tokens:** RS256, with the same claims (including `permissions`),
+  issuer, audience and 5-minute expiry as production, plus
+  `GET /api/auth/jwks`.
   `verifyPlanewardToken` from `@planeward/sdk/server` works unchanged. The
   key is generated once per project in `.planeward/keys.json`.
 - **Host protocol:** the emulator hosts your app in an iframe. It answers
@@ -308,6 +395,13 @@ also pass `--help` to any command.
 
 ## Where it diverges from production
 
+- **Permissions:** there are no staff-role grants, so an admin resolves like
+  `@everyone` (production adds the admin's staff roles last; admins never
+  get app permissions automatically). A simulated member is on one plan at
+  most, and the Dashboard simulates one staff role, never the workspace
+  owner (who has every dashboard key). The declaration is read once and
+  kept until you press Refresh; while it can't be read, is invalid, or
+  answers 404, tokens carry `permissions: []`.
 - **Badges:** the API and webhooks store and return awarded badges, but the
   emulator's host UI doesn't show them next to members or their messages
   the way the community chat does.

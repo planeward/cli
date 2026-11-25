@@ -1,6 +1,6 @@
 import { EMULATOR_WEBHOOK_EVENTS } from "../emulator/contract";
 
-export const COMMANDS = ["dev", "trigger", "init"] as const;
+export const COMMANDS = ["dev", "trigger", "init", "permissions"] as const;
 
 export type CommandName = (typeof COMMANDS)[number];
 
@@ -8,15 +8,16 @@ export function isCommandName(value: string): value is CommandName {
   return (COMMANDS as readonly string[]).includes(value);
 }
 
-export const MAIN_HELP = `planeward: run a Planeward community app against a local emulator
+export const MAIN_HELP = `planeward: run a Planeward app against a local emulator
 
 Usage
   planeward <command> [options]
 
 Commands
-  dev       Start the emulator and your app's dev server
-  trigger   Send one webhook event from a running emulator
-  init      Create planeward.json for the app in this folder
+  dev          Start the emulator and your app's dev server
+  trigger      Send one webhook event from a running emulator
+  init         Create planeward.json for the app in this folder
+  permissions  Check the app's /.well-known/planeward-permissions
 
 Options
   -h, --help     Show help (also: planeward <command> --help)
@@ -70,11 +71,28 @@ Usage
 
 Infers name and slug from package.json, and dev.command and dev.url from its
 "dev" script (and its --port). Uses /experience, /dashboard and
-/api/webhooks/planeward, and the COMMUNITY_MEMBERS_READ scope. Never
-overwrites an existing planeward.json.
+/api/webhooks/planeward, and the COMMUNITY_MEMBERS_READ scope. In a Next.js
+app it also creates app/.well-known/planeward-permissions/route.ts (or
+src/app/...), a starter permissions declaration. Never overwrites an
+existing file.
 
 Options
   -y, --yes   Write without asking
   -h, --help  Show this help
+`,
+  permissions: `planeward permissions: check the app's permissions declaration
+
+Usage
+  planeward permissions [options]
+
+Fetches /.well-known/planeward-permissions from the app's origin (dev.url in
+planeward.json, or --url), checks it with the same rules as Planeward, and
+prints the dashboard and community permissions. A 404 means the app declares
+none. Exits 1 when the declaration is invalid or the app can't be reached.
+
+Options
+  --url <origin>     Read from this origin instead of dev.url
+  --manifest <path>  Use this planeward.json instead of searching for one
+  -h, --help         Show this help
 `,
 };

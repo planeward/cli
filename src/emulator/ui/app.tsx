@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
 } from "react";
 
+import type { PermissionGrants } from "../../manifest";
 import type {
   ActivityAction,
   ApiRequestLogEntry,
@@ -21,6 +22,10 @@ import { ActivityPanel } from "./components/activity-panel";
 import { AppFrame, FrameState } from "./components/app-frame";
 import { InboxPanel } from "./components/inbox-panel";
 import { LeftRail } from "./components/left-rail";
+import {
+  PermissionsPanel,
+  type SimulatedViewer,
+} from "./components/permissions-panel";
 import { RequestsPanel } from "./components/requests-panel";
 import { TopBar } from "./components/top-bar";
 import { Badge, Button, cn } from "./components/ui";
@@ -39,9 +44,15 @@ import {
 /** Keep the logs bounded in a long session. */
 const MAX_LOG_ENTRIES = 500;
 
-type Tab = "activity" | "requests" | "webhooks" | "inbox";
+type Tab = "activity" | "requests" | "webhooks" | "inbox" | "permissions";
 
-const TAB_IDS: Tab[] = ["activity", "requests", "webhooks", "inbox"];
+const TAB_IDS: Tab[] = [
+  "activity",
+  "requests",
+  "webhooks",
+  "inbox",
+  "permissions",
+];
 
 /** The OS theme, used until the emulator state says otherwise. */
 function systemTheme(): AppTheme {
@@ -85,7 +96,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("activity");
   const [panelOpen, setPanelOpen] = useState(true);
-  const [resetCount, setResetCount] = useState(0);
+  const [reloadCount, setReloadCount] = useState(0);
   const [focus, setFocus] = useState<{ id: string; nonce: number } | null>(
     null
   );
@@ -265,8 +276,43 @@ export function App() {
   async function reset() {
     const next = await emulatorApi.reset();
     setState(next);
-    setResetCount((count) => count + 1);
+    setReloadCount((count) => count + 1);
     updateDeepLink({ type: "reset" });
+  }
+
+  /** Switches the viewer, plan and view the Permissions panel simulates. */
+  function simulate(next: SimulatedViewer) {
+    const nextView: AppView = next === "dashboard" ? "dashboard" : "experience";
+    updateDeepLink({ type: "choose-view" });
+    void mutate(async () => {
+      let current: EmulatorState | null = null;
+      if (next !== "dashboard") {
+        current = await emulatorApi.setViewer({
+          memberId: viewer.memberId,
+          role: next === "admin" ? "admin" : "member",
+          planId: next.startsWith("plan:")
+            ? next.slice("plan:".length)
+            : next === "member"
+              ? null
+              : undefined,
+        });
+      } else if (viewer.role !== "admin") {
+        // Production always opens the dashboard as admin.
+        current = await emulatorApi.setViewer({
+          memberId: viewer.memberId,
+          role: "admin",
+        });
+      }
+      return nextView === view && current
+        ? current
+        : emulatorApi.setView(nextView);
+    });
+  }
+
+  /** Saves grants; the frame reloads so the app gets a re-minted token. */
+  async function changeGrants(grants: PermissionGrants) {
+    setState(await emulatorApi.setGrants(grants));
+    setReloadCount((count) => count + 1);
   }
 
   async function runActivity(action: ActivityAction) {
@@ -316,6 +362,7 @@ export function App() {
       label: "Inbox",
       count: inboxCount(state.entities.notifications, viewer.memberId),
     },
+    { id: "permissions", label: "Permissions" },
   ];
 
   return (
@@ -383,8 +430,9 @@ export function App() {
               frameKey={appFrameKey({
                 viewerId: viewer.memberId,
                 role,
+                planId: viewer.planId,
                 view,
-                resetCount,
+                reloadCount,
                 deepLink: frameLink,
               })}
               dev={app.dev}
@@ -495,6 +543,21 @@ export function App() {
               activeId={frameLink?.notificationId ?? null}
               busy={busy}
               onOpen={openNotification}
+            />
+          </div>
+          <div
+            id="panel-permissions"
+            role="tabpanel"
+            aria-labelledby="tab-permissions"
+            hidden={tab !== "permissions"}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <PermissionsPanel
+              state={state}
+              busy={busy}
+              onSimulate={simulate}
+              onGrantsChange={changeGrants}
+              onDeclarationChange={() => setReloadCount((count) => count + 1)}
             />
           </div>
         </aside>

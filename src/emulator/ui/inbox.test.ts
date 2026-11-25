@@ -49,6 +49,7 @@ const STORED = [
 const member = (memberId: string): EmulatorViewer => ({
   memberId,
   role: "member",
+  planId: null,
 });
 
 describe("inbox filter", () => {
@@ -149,8 +150,9 @@ describe("opening a notification", () => {
       appFrameKey({
         viewerId: "member_1",
         role: "member",
+        planId: null,
         view: "experience",
-        resetCount: 0,
+        reloadCount: 0,
         deepLink,
       });
     assert.notEqual(key(first), key(again));

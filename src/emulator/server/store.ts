@@ -2,6 +2,7 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AppTheme, AppView } from "@planeward/sdk";
 
+import type { PermissionGrants } from "../../manifest";
 import type {
   EmulatorApp,
   EmulatorEntities,
@@ -74,6 +75,8 @@ export type EmulatorStoreOptions = {
   bus: EmulatorBus;
   now: () => Date;
   persistDebounceMs?: number;
+  /** planeward.json `dev.grants`; kept in memory, never in `state.json`. */
+  grants?: PermissionGrants;
 };
 
 /**
@@ -87,6 +90,7 @@ export class EmulatorStore {
   readonly #now: () => Date;
   readonly #debounceMs: number;
   #state: PersistedState;
+  #grants: PermissionGrants;
   #timer: ReturnType<typeof setTimeout> | null = null;
   #writing: Promise<void> = Promise.resolve();
 
@@ -97,6 +101,7 @@ export class EmulatorStore {
     this.#now = options.now;
     this.#debounceMs = options.persistDebounceMs ?? 150;
     this.#state = state;
+    this.#grants = options.grants ?? {};
   }
 
   /** Loads `state.json` unless `reset`; `fresh` is true when it seeded instead. */
@@ -119,7 +124,15 @@ export class EmulatorStore {
       options,
       loaded ?? seedState(options.app, options.now())
     );
-    if (loaded) store.#syncAppChannel();
+    if (loaded) {
+      store.#syncAppChannel();
+      // A state.json from before plans, or a plan since removed from dev.plans.
+      const { planId } = loaded.viewer;
+      loaded.viewer.planId =
+        planId && options.app.plans.some((plan) => plan.id === planId)
+          ? planId
+          : null;
+    }
     store.#schedulePersist();
     return { store, fresh: !loaded };
   }
@@ -146,6 +159,15 @@ export class EmulatorStore {
 
   set view(view: AppView) {
     this.#state.view = view;
+  }
+
+  /** Permission grants; set them through the grants route, which saves them. */
+  get grants(): PermissionGrants {
+    return this.#grants;
+  }
+
+  set grants(grants: PermissionGrants) {
+    this.#grants = grants;
   }
 
   get theme(): AppTheme {
@@ -176,6 +198,7 @@ export class EmulatorStore {
       viewer: this.#state.viewer,
       view: this.#state.view,
       theme: this.#state.theme,
+      grants: this.#grants,
       entities: this.#state.entities,
     };
   }
@@ -186,7 +209,7 @@ export class EmulatorStore {
     this.#bus.emit({ type: "state", state: this.snapshot() });
   }
 
-  /** Reseeds every entity and the viewer; keeps `installedAt`. */
+  /** Reseeds every entity and the viewer; keeps `installedAt` and the grants. */
   reset() {
     const seeded = seedState(this.app, this.#now());
     this.#state = { ...seeded, installedAt: this.#state.installedAt };
@@ -263,7 +286,7 @@ function seedState(app: EmulatorApp, now: Date): PersistedState {
     version: STATE_VERSION,
     installedAt: now.toISOString(),
     seq: 0,
-    viewer: { memberId: viewer.id, role: "member" },
+    viewer: { memberId: viewer.id, role: "member", planId: null },
     view: "experience",
     theme: "light",
     entities,

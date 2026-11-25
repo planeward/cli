@@ -15,8 +15,8 @@ importers:
         specifier: ^2.1.6
         version: 2.1.6(hono@4.13.16)
       '@planeward/sdk':
-        specifier: ^0.2.3
-        version: 0.2.3
+        specifier: ^0.2.4
+        version: 0.2.4
       hono:
         specifier: ^4.13.16
         version: 4.13.16
@@ -439,8 +439,8 @@ packages:
   '@oxc-project/types@0.156.0':
     resolution: {integrity: sha512-1Duyg48TdJNdyhEB8Xn1L36bT9Pv6GUtlKjHxOys8xkaF/rQq3XJE+bAurSK/AgIz5mGFsb77cn9Pb20+WCScw==}
 
-  '@planeward/sdk@0.2.3':
-    resolution: {integrity: sha512-1j+Up0n8Ic4EdFi5LyrgwwC26zEi2ixf2I50pJCTwrByxBLIyieoO8PhpQFK0TjjIT3XelGJlpunYj+RFQWJfA==}
+  '@planeward/sdk@0.2.4':
+    resolution: {integrity: sha512-VUgcLpDExYqQHohkiqSKA4XIWwJSmTPQN6M9TW70FssshuJVaWB+CW35xclkrqpsr4YZBayzQXRO//7jpV+dEg==}
     engines: {node: '>=24'}
 
   '@quansync/fs@1.1.0':
@@ -1960,7 +1960,7 @@ snapshots:
 
   '@oxc-project/types@0.156.0': {}
 
-  '@planeward/sdk@0.2.3':
+  '@planeward/sdk@0.2.4':
     dependencies:
       jose: 6.2.15
 

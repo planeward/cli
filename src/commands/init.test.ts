@@ -3,9 +3,17 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
+import { validatePermissionsResponse } from "@planeward/sdk/server";
 
 import { CliError } from "./errors";
-import { inferManifest, portFromScript, runInit, slugify } from "./init";
+import {
+  inferManifest,
+  inferPermissionsRoute,
+  PERMISSIONS_ROUTE_SOURCE,
+  portFromScript,
+  runInit,
+  slugify,
+} from "./init";
 import { validateManifest } from "./manifest-file";
 import { manifestSchemaUrl, packageVersion } from "./package-info";
 import { captureOutput, tempDir } from "./test-support";
@@ -140,7 +148,72 @@ describe("planeward init", () => {
       }
     );
     assert.equal(code, 1);
-    assert.deepEqual(questions, ["Write planeward.json? (Y/n) "]);
+    assert.deepEqual(questions, [
+      "Write planeward.json and app/.well-known/planeward-permissions/route.js? (Y/n) ",
+    ]);
     assert.equal(existsSync(join(dir, "planeward.json")), false);
+    assert.equal(existsSync(join(dir, "app")), false);
+  });
+
+  it("scaffolds a permissions route in a Next.js app, never over an existing one", async () => {
+    const dir = await appDir("next-src", {
+      name: "next-src",
+      scripts: { dev: "next dev -p 3009" },
+      dependencies: { next: "16.0.0", "@planeward/sdk": "^0.2.4" },
+    });
+    await mkdir(join(dir, "src"));
+    await writeFile(join(dir, "tsconfig.json"), "{}");
+    const output = captureOutput();
+    assert.equal(
+      await runInit(
+        { yes: true, help: false },
+        { cwd: dir, output, schemaUrl: SCHEMA }
+      ),
+      0
+    );
+    const route = "src/app/.well-known/planeward-permissions/route.ts";
+    assert.equal(
+      readFileSync(join(dir, route), "utf8"),
+      PERMISSIONS_ROUTE_SOURCE
+    );
+    assert.doesNotMatch(output.text(), /npm install @planeward\/sdk/);
+
+    assert.deepEqual(inferPermissionsRoute(dir), {
+      route: null,
+      notes: [`${route} already exists; left as is.`],
+    });
+  });
+
+  it("skips the route outside Next.js and asks for the SDK when it's missing", async () => {
+    const vite = await appDir("vite", {
+      name: "vite-app",
+      scripts: { dev: "vite --port 5174" },
+    });
+    const skipped = inferPermissionsRoute(vite);
+    assert.equal(skipped.route, null);
+    assert.match(skipped.notes.join(" "), /Not a Next\.js app/);
+
+    const next = await appDir("next-no-sdk", {
+      name: "next-no-sdk",
+      devDependencies: { next: "16.0.0" },
+    });
+    const inferred = inferPermissionsRoute(next);
+    assert.equal(
+      inferred.route?.path,
+      "app/.well-known/planeward-permissions/route.js"
+    );
+    assert.deepEqual(inferred.notes, [
+      "The permissions route imports @planeward/sdk: npm install @planeward/sdk",
+    ]);
+  });
+
+  it("starts the route from a declaration the SDK accepts", () => {
+    const literal = /definePermissions\((\{[\s\S]*?\n\})\);/.exec(
+      PERMISSIONS_ROUTE_SOURCE
+    )?.[1];
+    assert.ok(literal);
+    // The object literal is plain JS: evaluate it and validate it.
+    const declaration: unknown = new Function(`return (${literal});`)();
+    assert.equal(validatePermissionsResponse(declaration).ok, true);
   });
 });

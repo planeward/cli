@@ -131,6 +131,8 @@ export type ViewerTokenInput = {
     name: string;
     avatar: string | null;
   };
+  /** Granted permission keys (`resolvePermissions`). */
+  permissions: string[];
   nowMs: number;
 };
 
@@ -152,6 +154,7 @@ export function buildViewerTokenClaims(
     role: input.viewer.role,
     name: input.viewer.name,
     avatar: input.viewer.avatar,
+    permissions: input.permissions,
   };
 }
 

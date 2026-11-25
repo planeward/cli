@@ -5,15 +5,24 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { Ajv2020 } from "ajv/dist/2020.js";
 
-import { MANIFEST_SCHEMA_PATH } from "../manifest";
+import { MANIFEST_SCHEMA_PATH, type PermissionGrants } from "../manifest";
 import {
   findManifest,
   gitignoreWarning,
   loadManifest,
   ManifestError,
+  saveManifestGrants,
   validateManifest,
 } from "./manifest-file";
 import { tempDir, testManifest, writeManifest } from "./test-support";
+
+const dev = testManifest().dev;
+const PLANS = [{ id: "plan_pro", name: "Pro" }];
+const GRANTS = {
+  everyone: { "posts.create": "on" },
+  plans: { plan_pro: { "posts.moderate": "on", "posts.create": "off" } },
+  dashboard: { "reports.export": true },
+};
 
 const issuesOf = (value: unknown) => {
   const result = validateManifest(value);
@@ -98,6 +107,23 @@ describe("manifest discovery", () => {
     await writeFile(join(other, ".gitignore"), "/.planeward\n");
     assert.equal(gitignoreWarning(other), null);
   });
+
+  it("saves grants to dev.grants and keeps the rest of the file", async () => {
+    const dir = join(root, "grants");
+    await mkdir(dir);
+    const manifest = { ...testManifest(), dev: { ...dev, plans: PLANS } };
+    await writeManifest(dir, manifest);
+    const file = join(dir, "planeward.json");
+
+    await saveManifestGrants(file, GRANTS as PermissionGrants);
+    assert.deepEqual(loadManifest(file), {
+      ...manifest,
+      dev: { ...manifest.dev, grants: GRANTS },
+    });
+
+    await saveManifestGrants(file, {});
+    assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), manifest);
+  });
 });
 
 describe("manifest validation", () => {
@@ -127,6 +153,34 @@ describe("manifest validation", () => {
     assert.deepEqual(
       issuesOf({ ...testManifest(), scopes: ["EVENTS_READ", "EVENTS_READ"] }),
       ["scopes[1]: EVENTS_READ is listed twice."]
+    );
+  });
+
+  it("accepts dev.plans and dev.grants, and names their problems", () => {
+    assert.equal(
+      validateManifest({
+        ...testManifest(),
+        dev: { ...dev, plans: PLANS, grants: GRANTS },
+      }).ok,
+      true
+    );
+    assert.deepEqual(
+      issuesOf({
+        ...testManifest(),
+        dev: {
+          ...dev,
+          plans: [...PLANS, { id: "plan_pro", name: "Again" }],
+          grants: {
+            everyone: { posts: "on" },
+            dashboard: { "reports.export": "on" },
+          },
+        },
+      }),
+      [
+        "dev.plans[1].id: plan_pro is listed twice.",
+        'dev.grants.everyone.posts: "posts" is not a permission key (dotted lowercase, like "posts.moderate").',
+        "dev.grants.dashboard.reports.export: a dashboard grant is true or false.",
+      ]
     );
   });
 
@@ -165,6 +219,23 @@ describe("manifest validation", () => {
       { ...testManifest(), dev: { command: "x" } },
       { ...testManifest(), dev: { command: "x", url: "ftp://x" } },
       { ...testManifest(), other: 1 },
+      { ...testManifest(), dev: { ...dev, plans: PLANS, grants: GRANTS } },
+      { ...testManifest(), dev: { ...dev, plans: [{ id: "a b", name: "x" }] } },
+      { ...testManifest(), dev: { ...dev, plans: [{ id: "a", name: "" }] } },
+      { ...testManifest(), dev: { ...dev, grants: { everyone: { x: "on" } } } },
+      {
+        ...testManifest(),
+        dev: { ...dev, grants: { everyone: { "a.b": "yes" } } },
+      },
+      {
+        ...testManifest(),
+        dev: { ...dev, grants: { dashboard: { "a.b": 1 } } },
+      },
+      {
+        ...testManifest(),
+        dev: { ...dev, grants: { plans: { "bad id": {} } } },
+      },
+      { ...testManifest(), dev: { ...dev, grants: { roles: {} } } },
     ];
     for (const sample of samples) {
       assert.equal(

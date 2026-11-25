@@ -16,11 +16,14 @@ import {
   type EmulatorStreamEventType,
   type MintViewerToken,
   type MintViewerTokenResponse,
+  type PermissionsDeclarationResponse,
+  type SetGrantsRequest,
   type SetViewerRequest,
   type WebhookDeliveryEntry,
   type WebhookDeliveryListResponse,
   type WebhookDeliveryResponse,
 } from "../contract";
+import type { PermissionsDeclaration } from "../permissions";
 
 export class EmulatorApiError extends Error {
   readonly status: number;
@@ -122,6 +125,21 @@ export const emulatorApi = {
   async runActivity(action: ActivityAction): Promise<ActivityResult> {
     return (
       await call<ActivityResponse>("POST", EMULATOR_ROUTES.activity, action)
+    ).data;
+  },
+  async getPermissions(refresh = false): Promise<PermissionsDeclaration> {
+    return (
+      await call<PermissionsDeclarationResponse>(
+        "GET",
+        refresh
+          ? `${EMULATOR_ROUTES.permissions}?refresh=1`
+          : EMULATOR_ROUTES.permissions
+      )
+    ).data;
+  },
+  async setGrants(grants: SetGrantsRequest): Promise<EmulatorState> {
+    return (
+      await call<EmulatorStateResponse>("PUT", EMULATOR_ROUTES.grants, grants)
     ).data;
   },
   async reset(): Promise<EmulatorState> {

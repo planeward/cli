@@ -10,6 +10,7 @@ import { serve, type ServerType } from "@hono/node-server";
 import { APP_JWKS_PATH } from "@planeward/sdk/server";
 import { Hono } from "hono";
 
+import { saveManifestGrants } from "../../commands/manifest-file";
 import type { PlanewardManifest } from "../../manifest";
 import {
   EMULATOR_DEFAULT_ORIGIN,
@@ -26,6 +27,7 @@ import { Domain } from "./domain";
 import { createEmulatorRoutes, DEV_UI_ENV } from "./emulator-routes";
 import { APP_CHANNEL_ID } from "./fixtures";
 import { loadOrCreateKeys, type EmulatorKeys } from "./keys";
+import { PermissionsSource } from "./permissions";
 import { RequestLog } from "./requests";
 import { orderedScopes } from "./scopes";
 import { ensureStateDir } from "./state-dir";
@@ -43,6 +45,11 @@ export { signWebhookBody } from "./webhooks";
 
 export type CreateEmulatorAppOptions = {
   manifest: PlanewardManifest;
+  /**
+   * The manifest's file, where the Permissions panel saves `dev.grants`.
+   * Without it grants last until the emulator stops.
+   */
+  manifestPath?: string | null;
   /** Where the app runs; defaults to `manifest.dev.url`. */
   appOrigin?: string;
   /** `<appDir>/.planeward`; null keeps keys and state in memory (tests). */
@@ -54,7 +61,7 @@ export type CreateEmulatorAppOptions = {
   /** Prebuilt host UI; defaults to the package's `dist/ui`. */
   uiDir?: string;
   now?: () => Date;
-  /** Used for webhook deliveries. */
+  /** Used for webhook deliveries and reading the permissions declaration. */
   fetch?: typeof fetch;
   /** Wait before the single webhook retry after a network error (default 1000). */
   webhookRetryDelayMs?: number;
@@ -72,6 +79,7 @@ export type EmulatorInstance = {
   webhooks: WebhookDispatcher;
   requests: RequestLog;
   keys: EmulatorKeys;
+  permissions: PermissionsSource;
   /** True when the state was seeded (no `state.json`, or `reset`). */
   fresh: boolean;
   setBaseUrl: (url: string) => void;
@@ -109,6 +117,7 @@ export function emulatorAppFromManifest(
       ? joinUrl(appOrigin, manifest.webhookPath)
       : null,
     dev: { command: manifest.dev.command, url: manifest.dev.url },
+    plans: manifest.dev.plans ?? [],
   };
 }
 
@@ -126,7 +135,14 @@ export async function createEmulatorApp(
     bus,
     now: options.now ?? (() => new Date()),
     reset: options.reset ?? false,
+    grants: options.manifest.dev.grants,
   });
+  const permissions = new PermissionsSource({
+    appUrl: appOrigin,
+    fetch: options.fetch,
+    now: () => store.now(),
+  });
+  const manifestPath = options.manifestPath ?? null;
   const domain = new Domain(store);
   const requests = new RequestLog(bus);
   const webhooks = new WebhookDispatcher({
@@ -169,6 +185,11 @@ export async function createEmulatorApp(
       requests,
       bus,
       keys,
+      permissions,
+      saveGrants: (grants) =>
+        manifestPath
+          ? saveManifestGrants(manifestPath, grants)
+          : Promise.resolve(),
       baseUrl: () => baseUrl,
       allowDevUiOrigin:
         options.allowDevUiOrigin ?? process.env[DEV_UI_ENV] === "1",
@@ -184,6 +205,7 @@ export async function createEmulatorApp(
     webhooks,
     requests,
     keys,
+    permissions,
     fresh,
     setBaseUrl: (url) => {
       baseUrl = trimSlash(url);

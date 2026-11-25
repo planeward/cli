@@ -1,5 +1,5 @@
 /**
- * Host side of the Planeward Community Apps postMessage protocol, kept free of
+ * Host side of the Planeward apps postMessage protocol, kept free of
  * React so it can be unit tested. Mirrors the production host in the
  * Planeward repo: `packages/components/src/community-app-frame-protocol.ts`
  * (message helpers, origin checks, token cache) and the orchestration in

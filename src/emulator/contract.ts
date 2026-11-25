@@ -20,7 +20,12 @@ import type {
 } from "@planeward/sdk";
 import type { AppWebhookEnvelope } from "@planeward/sdk/server";
 
-import type { AppGrantableScope } from "../manifest";
+import type {
+  AppGrantableScope,
+  PermissionGrants,
+  PlanewardDevPlan,
+} from "../manifest";
+import type { PermissionsDeclaration } from "./permissions";
 
 // Server --------------------------------------------------------------------
 
@@ -63,6 +68,17 @@ export const EMULATOR_ROUTES = {
   reset: `${EMULATOR_BASE_PATH}/reset`,
   /** GET → `text/event-stream` of `EmulatorStreamEvent`. */
   stream: `${EMULATOR_BASE_PATH}/stream`,
+  /**
+   * GET → `PermissionsDeclarationResponse`: the app's
+   * `/.well-known/planeward-permissions`, read once and kept; `?refresh=1`
+   * reads it again.
+   */
+  permissions: `${EMULATOR_BASE_PATH}/permissions`,
+  /**
+   * PUT `SetGrantsRequest` → `EmulatorStateResponse`. Replaces the grants and
+   * saves them to planeward.json `dev.grants`.
+   */
+  grants: `${EMULATOR_BASE_PATH}/grants`,
   /**
    * POST `TriggerRequest` → `WebhookDeliveryResponse` once the delivery has
    * finished (or was skipped). `planeward trigger` calls it.
@@ -424,6 +440,11 @@ export type EmulatorEntities = {
 export type EmulatorViewer = {
   memberId: string;
   role: AppViewerRole;
+  /**
+   * A `dev.plans` id: the member viewer is simulated as on that plan for
+   * permissions. Null for no plan; ignored for admins and the dashboard.
+   */
+  planId: string | null;
 };
 
 export type EmulatorApp = {
@@ -444,6 +465,8 @@ export type EmulatorApp = {
   webhookUrl: string | null;
   /** The manifest's `dev` block; the host UI shows it when the app isn't running. */
   dev: { command: string; url: string };
+  /** `dev.plans`: fake plans a member viewer can be simulated on. */
+  plans: PlanewardDevPlan[];
 };
 
 export type EmulatorState = {
@@ -451,16 +474,25 @@ export type EmulatorState = {
   viewer: EmulatorViewer;
   view: AppView;
   theme: AppTheme;
+  /** Permission grants, as saved to planeward.json `dev.grants`. */
+  grants: PermissionGrants;
   entities: EmulatorEntities;
 };
 
 export type EmulatorStateResponse = { data: EmulatorState };
 
-export type SetViewerRequest = EmulatorViewer;
+/** `planId` left out keeps the current one. */
+export type SetViewerRequest = Omit<EmulatorViewer, "planId"> & {
+  planId?: string | null;
+};
 
 export type SetViewRequest = { view: AppView };
 
 export type SetThemeRequest = { theme: AppTheme };
+
+export type SetGrantsRequest = PermissionGrants;
+
+export type PermissionsDeclarationResponse = { data: PermissionsDeclaration };
 
 // Viewer token ----------------------------------------------------------------
 
@@ -469,6 +501,8 @@ export type MintViewerTokenRequest = Record<string, never>;
 
 export type MintViewerToken = {
   token: string;
+  /** The token's `permissions` claim. */
+  permissions: string[];
   /** Milliseconds since epoch, like `AppTokenMessage.expiresAt`. */
   expiresAt: number;
   context: AppContext;

@@ -179,6 +179,7 @@ export async function startDev(options: StartDevOptions): Promise<DevSession> {
   try {
     emulator = await startEmulator({
       manifest,
+      manifestPath,
       stateDir: join(manifestDir, STATE_DIR_NAME),
       reset: options.reset,
       port: options.port,
