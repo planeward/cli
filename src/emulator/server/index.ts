@@ -34,6 +34,7 @@ import { ensureStateDir } from "./state-dir";
 import { createStaticHandler, defaultUiDir } from "./static";
 import { EmulatorBus, EmulatorStore } from "./store";
 import {
+  appChannelEvent,
   appInstalledEvent,
   buildTriggerEvent,
   type TriggerOptions,
@@ -286,9 +287,18 @@ export async function startEmulator(
   instance.setBaseUrl(url);
 
   if (instance.fresh) {
-    instance.webhooks.dispatch([appInstalledEvent(instance.store)], {
-      waitForApp: true,
-    });
+    // The seed installs the app with its channel already added.
+    instance.webhooks.dispatch(
+      [
+        appInstalledEvent(instance.store),
+        appChannelEvent(
+          instance.store,
+          "app.channel_added",
+          instance.store.installedAt
+        ),
+      ],
+      { waitForApp: true }
+    );
   }
 
   const { store, keys, webhooks } = instance;

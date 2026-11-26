@@ -1,6 +1,10 @@
 import type { EmulatorWebhookEventName, FixtureMember } from "../contract";
 import type { Domain, DomainEvent } from "./domain";
-import { EMULATOR_COMMUNITY_ID, EMULATOR_WORKSPACE_NAME } from "./fixtures";
+import {
+  APP_CHANNEL_ID,
+  EMULATOR_COMMUNITY_ID,
+  EMULATOR_WORKSPACE_NAME,
+} from "./fixtures";
 import { orderedScopes } from "./scopes";
 import type { EmulatorStore } from "./store";
 
@@ -26,6 +30,33 @@ export function appInstalledEvent(store: EmulatorStore): DomainEvent {
     },
     filteredReason: null,
   };
+}
+
+/**
+ * `app.channel_added` / `app.channel_removed` for the installation's APP
+ * channel. The seed adds that channel with the install, so a fresh start
+ * sends `app.channel_added` right after `app.installed`.
+ */
+export function appChannelEvent(
+  store: EmulatorStore,
+  event: "app.channel_added" | "app.channel_removed",
+  at: string
+): DomainEvent {
+  const channel = store.entities.channels.find(
+    (item) => item.id === APP_CHANNEL_ID
+  );
+  if (!channel) throw new TriggerError("The app has no channel.");
+  const data = {
+    installationId: store.app.installationId,
+    workspaceId: store.app.workspaceId,
+    communityId: EMULATOR_COMMUNITY_ID,
+    channelId: channel.id,
+    channelName: channel.name,
+    categoryId: channel.categoryId,
+  };
+  return event === "app.channel_added"
+    ? { event, data: { ...data, addedAt: at }, filteredReason: null }
+    : { event, data: { ...data, removedAt: at }, filteredReason: null };
 }
 
 /**
@@ -70,6 +101,9 @@ export function buildTriggerEvent(
         },
         filteredReason: null,
       };
+    case "app.channel_added":
+    case "app.channel_removed":
+      return appChannelEvent(store, event, now);
     case "community.membership.granted":
     case "community.membership.resumed":
     case "community.membership.suspended":

@@ -33,6 +33,7 @@ import {
   type WebhookDeliveryResponse,
 } from "../contract";
 import { HIDDEN_CHANNEL_REASON, UNFLAGGED_EVENT_REASON } from "./domain";
+import { APP_CHANNEL_ID } from "./fixtures";
 import { startEmulator, TriggerError, type RunningEmulator } from "./index";
 import {
   loadOpenApiValidator,
@@ -279,6 +280,23 @@ describe("emulator", () => {
       assert.deepEqual(installed.envelope.data.grantedPermissions, [
         ...APP_GRANTABLE_SCOPES,
       ]);
+    }
+
+    // The seeded install comes with its APP channel.
+    const added = await waitFor(
+      () =>
+        receiver.received.find(
+          (item) => item.envelope.event === "app.channel_added"
+        ),
+      "app.channel_added"
+    );
+    assert.equal(added.envelope.event, "app.channel_added");
+    if (added.envelope.event === "app.channel_added") {
+      assert.equal(added.envelope.data.channelId, APP_CHANNEL_ID);
+      assert.equal(
+        added.envelope.data.installationId,
+        EMULATOR_INSTALLATION_ID
+      );
     }
   });
 

@@ -541,6 +541,8 @@ export type ApiRequestLogResponse = { data: ApiRequestLogEntry[] };
 export const EMULATOR_WEBHOOK_EVENTS = [
   "app.installed",
   "app.uninstalled",
+  "app.channel_added",
+  "app.channel_removed",
   "community.membership.granted",
   "community.membership.suspended",
   "community.membership.resumed",

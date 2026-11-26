@@ -17,6 +17,7 @@ import {
   type FixtureMember,
 } from "../contract";
 import type { Domain, DomainEvent } from "./domain";
+import { APP_CHANNEL_ID } from "./fixtures";
 import { createEmulatorApp } from "./index";
 import { appInstalledEvent, buildTriggerEvent } from "./trigger";
 
@@ -29,6 +30,24 @@ const EXPECTED_KEYS = {
     "installedAt",
   ],
   "app.uninstalled": ["installationId", "workspaceId", "uninstalledAt"],
+  "app.channel_added": [
+    "installationId",
+    "workspaceId",
+    "communityId",
+    "channelId",
+    "channelName",
+    "categoryId",
+    "addedAt",
+  ],
+  "app.channel_removed": [
+    "installationId",
+    "workspaceId",
+    "communityId",
+    "channelId",
+    "channelName",
+    "categoryId",
+    "removedAt",
+  ],
   "community.membership.granted": [
     "id",
     "communityId",
@@ -199,6 +218,28 @@ describe("webhook payloads", () => {
     assertPayload(appInstalledEvent(domain.store));
     for (const name of EMULATOR_WEBHOOK_EVENTS) {
       assertPayload(buildTriggerEvent(domain, name, { memberId: member.id }));
+    }
+  });
+
+  it("sends the app.channel_* events for the app's channel", () => {
+    const channel = domain.channel(APP_CHANNEL_ID)!;
+    for (const name of ["app.channel_added", "app.channel_removed"] as const) {
+      const built = buildTriggerEvent(domain, name);
+      assert.equal(built.event, name);
+      const data = built.data as AppWebhookEventDataMap[typeof name];
+      assert.deepEqual(
+        {
+          channelId: data.channelId,
+          channelName: data.channelName,
+          categoryId: data.categoryId,
+        },
+        {
+          channelId: APP_CHANNEL_ID,
+          channelName: channel.name,
+          categoryId: channel.categoryId,
+        },
+        name
+      );
     }
   });
 

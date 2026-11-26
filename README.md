@@ -249,8 +249,8 @@ The command exits 0 when the app answered with a 2xx status. It exits 1 when
 the delivery failed or was skipped, or when it can't reach an emulator. It
 exits 2 for an unknown event.
 
-Events: `app.installed`, `app.uninstalled`,
-`community.membership.granted`, `community.membership.suspended`,
+Events: `app.installed`, `app.uninstalled`, `app.channel_added`,
+`app.channel_removed`, `community.membership.granted`, `community.membership.suspended`,
 `community.membership.resumed`, `community.membership.revoked`,
 `community.message.created`, `community.message.deleted`,
 `community.reaction.added`, `community.reaction.removed`,
@@ -388,7 +388,10 @@ also pass `--help` to any command.
   scope map. You can send them from the Activity panel, from
   `planeward trigger`, and with Redeliver. A redelivery keeps the delivery id.
   `app.installed` is sent on the first start (fresh state) once the app
-  answers, waiting up to 60 seconds.
+  answers, waiting up to 60 seconds, together with `app.channel_added` for
+  the app's channel (the seed installs the app with its channel). Trigger
+  `app.channel_added` or `app.channel_removed` to send them again for that
+  channel; the channel itself stays.
 - **State** persists in `.planeward/state.json` across restarts. Use
   `--reset` or `r` to reseed it. State saved by an older emulator version is
   reseeded on start.

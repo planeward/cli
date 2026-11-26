@@ -219,7 +219,7 @@ export async function startDev(options: StartDevOptions): Promise<DevSession> {
   );
   if (emulator.fresh && manifest.webhookPath) {
     output.info(
-      "Fresh state: app.installed is sent once the app answers (up to 60 s)."
+      "Fresh state: app.installed and app.channel_added are sent once the app answers (up to 60 s)."
     );
   }
 

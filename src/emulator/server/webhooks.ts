@@ -25,6 +25,8 @@ export const WEBHOOK_EVENT_SCOPES: Record<
 > = {
   "app.installed": null,
   "app.uninstalled": null,
+  "app.channel_added": null,
+  "app.channel_removed": null,
   "community.membership.granted": "COMMUNITY_MEMBERS_READ",
   "community.membership.suspended": "COMMUNITY_MEMBERS_READ",
   "community.membership.resumed": "COMMUNITY_MEMBERS_READ",
