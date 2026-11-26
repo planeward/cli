@@ -333,6 +333,14 @@ also pass `--help` to any command.
   `theme` changes. It locks messages to the app's origin. You can switch the
   viewer (any seeded member, as `member` or `admin`), the view (Experience or
   Dashboard) and the theme.
+- **Appearance:** the token's `context.appearance` and every `theme` message
+  carry the host's look for the current light or dark mode: shadcn colour
+  tokens, corner radius and font, as `applyAppearance` from `@planeward/sdk`
+  expects. The appearance picker next to the theme toggle switches between
+  **Planeward default** (neutral palette, `0.625rem` radius, Geist) and
+  **Sample brand** (violet primary, `1rem` radius, Nunito), so you can check
+  your app follows a community's branding. Switching the preset or the theme
+  sends a `theme` message. The choice is kept in the emulator state.
 - **Inbox:** the dev panel's Inbox tab lists the notifications your app sent,
   newest first, with the title (your app's name), the body as plain text,
   the recipient, the path and the time. It shows the current viewer's by

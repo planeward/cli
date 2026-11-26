@@ -10,6 +10,11 @@ import {
 } from "react";
 
 import type { PermissionGrants } from "../../manifest";
+import {
+  DEFAULT_EMULATOR_APPEARANCE_PRESET,
+  emulatorAppearance,
+  type EmulatorAppearancePreset,
+} from "../appearance";
 import type {
   ActivityAction,
   ApiRequestLogEntry,
@@ -151,6 +156,12 @@ export function App() {
   );
 
   const theme = state?.theme ?? fallbackTheme;
+  const appearancePreset =
+    state?.appearance ?? DEFAULT_EMULATOR_APPEARANCE_PRESET;
+  const appearance = useMemo(
+    () => emulatorAppearance(appearancePreset, theme),
+    [appearancePreset, theme]
+  );
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
@@ -273,6 +284,17 @@ export function App() {
     });
   }
 
+  function changeAppearance(nextAppearance: EmulatorAppearancePreset) {
+    const previous = state;
+    setState((current) =>
+      current ? { ...current, appearance: nextAppearance } : current
+    );
+    emulatorApi.setAppearance(nextAppearance).then(setState, (cause) => {
+      setState(previous);
+      setNotice(errorMessage(cause));
+    });
+  }
+
   async function reset() {
     const next = await emulatorApi.reset();
     setState(next);
@@ -374,11 +396,13 @@ export function App() {
         role={role}
         view={view}
         theme={theme}
+        appearance={appearancePreset}
         busy={busy}
         panelOpen={panelOpen}
         onViewerChange={changeViewer}
         onRoleChange={changeRole}
         onThemeChange={changeTheme}
+        onAppearanceChange={changeAppearance}
         onReset={reset}
         onTogglePanel={() => setPanelOpen((open) => !open)}
       />
@@ -427,6 +451,7 @@ export function App() {
               src={src}
               title={app.name}
               theme={theme}
+              appearance={appearance}
               frameKey={appFrameKey({
                 viewerId: viewer.memberId,
                 role,

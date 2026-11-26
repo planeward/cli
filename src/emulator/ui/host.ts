@@ -8,6 +8,8 @@
  */
 import {
   APP_MESSAGE,
+  parseAppAppearance,
+  type AppAppearance,
   type AppContext,
   type AppTheme,
   type AppToHostMessage,
@@ -116,17 +118,30 @@ export function appFrameRequestId(message: AppToHostMessage): string | null {
   return message.type === APP_MESSAGE.tokenRequest ? message.requestId : null;
 }
 
+/**
+ * The token message with the current theme and appearance. The appearance
+ * goes through the SDK's `parseAppAppearance`, so the app gets exactly what
+ * it would keep; the key is left out when nothing survives.
+ */
 export function appTokenMessage(
   requestId: string | null,
   token: AppViewerToken,
-  theme: AppTheme
+  theme: AppTheme,
+  appearance?: AppAppearance
 ): HostToAppMessage {
+  // The host's current appearance replaces the one minted with the token.
+  const context: AppContext = { ...token.context, theme };
+  delete context.appearance;
+  const parsed = parseAppAppearance(appearance);
+  if (parsed) {
+    context.appearance = parsed;
+  }
   return {
     type: APP_MESSAGE.token,
     requestId,
     token: token.token,
     expiresAt: token.expiresAt,
-    context: { ...token.context, theme },
+    context,
   };
 }
 
@@ -140,8 +155,15 @@ export function appErrorMessage(
   return { type: APP_MESSAGE.error, requestId, message };
 }
 
-export function appThemeMessage(theme: AppTheme): HostToAppMessage {
-  return { type: APP_MESSAGE.theme, theme };
+/** `planeward:app:theme`, with the appearance sanitised like `appTokenMessage`. */
+export function appThemeMessage(
+  theme: AppTheme,
+  appearance?: AppAppearance
+): HostToAppMessage {
+  const parsed = parseAppAppearance(appearance);
+  return parsed
+    ? { type: APP_MESSAGE.theme, theme, appearance: parsed }
+    : { type: APP_MESSAGE.theme, theme };
 }
 
 // Token cache -----------------------------------------------------------------
@@ -218,6 +240,8 @@ export type AppFrameHostOptions = {
   fetchToken: (requestId: string | null) => Promise<AppViewerToken>;
   /** Host theme at construction. */
   theme: AppTheme;
+  /** Host appearance for `theme` at construction; sent with the token. */
+  appearance?: AppAppearance;
   /** The app sent `ready`. */
   onReady?: () => void;
   /** Minting failed: production hides the app and offers a retry. */
@@ -236,8 +260,11 @@ export type AppFrameHost = {
     origin: string;
     data: unknown;
   }) => void;
-  /** Host theme changed; posted as `planeward:app:theme` once the app is ready. */
-  setTheme: (theme: AppTheme) => void;
+  /**
+   * Host theme or appearance changed; posted as `planeward:app:theme` once
+   * the app is ready, and only when either differs from what was last sent.
+   */
+  setTheme: (theme: AppTheme, appearance?: AppAppearance) => void;
   /** Stops answering (the iframe was reloaded or unmounted). */
   dispose: () => void;
 };
@@ -251,7 +278,10 @@ export function createAppFrameHost(options: AppFrameHostOptions): AppFrameHost {
   const origin = appFrameOrigin(options.src);
   const now = options.now ?? Date.now;
   let theme = options.theme;
-  let postedTheme: AppTheme | null = null;
+  let appearance = options.appearance;
+  // Theme plus appearance, serialised, so an equal re-send is no post.
+  const themeKey = () => JSON.stringify([theme, appearance ?? null]);
+  let postedTheme: string | null = null;
   let ready = false;
   let disposed = false;
   let cache = initialAppTokenCacheState();
@@ -268,8 +298,8 @@ export function createAppFrameHost(options: AppFrameHostOptions): AppFrameHost {
 
   // Reads the theme current when the fetch resolves.
   function deliverToken(requestId: string | null, token: AppViewerToken) {
-    postedTheme = theme;
-    post(appTokenMessage(requestId, token, theme));
+    postedTheme = themeKey();
+    post(appTokenMessage(requestId, token, theme, appearance));
   }
 
   async function sendToken(requestId: string | null) {
@@ -334,19 +364,21 @@ export function createAppFrameHost(options: AppFrameHostOptions): AppFrameHost {
       }
       if (message.type === APP_MESSAGE.ready) {
         // The token carries the current theme; only later changes need a post.
-        postedTheme = theme;
+        postedTheme = themeKey();
         ready = true;
         options.onReady?.();
       }
       void sendToken(appFrameRequestId(message));
     },
-    setTheme(next) {
-      theme = next;
-      if (!ready || postedTheme === next) {
+    setTheme(nextTheme, nextAppearance) {
+      theme = nextTheme;
+      appearance = nextAppearance;
+      const key = themeKey();
+      if (!ready || postedTheme === key) {
         return;
       }
-      postedTheme = next;
-      post(appThemeMessage(next));
+      postedTheme = key;
+      post(appThemeMessage(theme, appearance));
     },
     dispose() {
       disposed = true;

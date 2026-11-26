@@ -1,12 +1,21 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { APP_MESSAGE, type HostToAppMessage } from "@planeward/sdk";
+import {
+  APP_MESSAGE,
+  type AppAppearance,
+  type AppTheme,
+  type AppTokenMessage,
+  type HostToAppMessage,
+} from "@planeward/sdk";
 
+import { emulatorAppearance } from "../appearance";
 import {
   APP_SESSION_ERROR_MESSAGE,
   APP_TOKEN_THROTTLED_MESSAGE,
   appFrameAllow,
   appFrameOrigin,
+  appThemeMessage,
+  appTokenMessage,
   createAppFrameHost,
   decideAppTokenRequest,
   readAppFrameMessage,
@@ -22,6 +31,8 @@ function setup(
   options: {
     fetchToken?: (requestId: string | null) => Promise<AppViewerToken>;
     now?: () => number;
+    theme?: AppTheme;
+    appearance?: AppAppearance;
   } = {}
 ) {
   const posted: Posted[] = [];
@@ -36,7 +47,8 @@ function setup(
   const host = createAppFrameHost({
     src: SRC,
     getTarget: () => target,
-    theme: "light",
+    theme: options.theme ?? "light",
+    appearance: options.appearance,
     now: options.now,
     fetchToken:
       options.fetchToken ??
@@ -45,7 +57,12 @@ function setup(
         return {
           token: `token-${calls.length}`,
           expiresAt: Date.now() + 300_000,
-          context: { view: "experience", channelId: "ch_app", theme: "dark" },
+          context: {
+            view: "experience",
+            channelId: "ch_app",
+            theme: "dark",
+            appearance: emulatorAppearance("brand", "dark"),
+          },
         };
       }),
     onReady: () => ready++,
@@ -294,6 +311,95 @@ describe("createAppFrameHost", () => {
       message: { type: APP_MESSAGE.theme, theme: "light" },
       targetOrigin: APP_ORIGIN,
     });
+  });
+
+  it("sends the selected preset's appearance for the current mode", async () => {
+    const cases = [
+      { preset: "planeward", theme: "light" },
+      { preset: "planeward", theme: "dark" },
+      { preset: "brand", theme: "light" },
+      { preset: "brand", theme: "dark" },
+    ] as const;
+    for (const { preset, theme } of cases) {
+      const appearance = emulatorAppearance(preset, theme);
+      assert.ok(appearance, `${preset}/${theme} survives the SDK parser`);
+      const { posted, fromApp } = setup({ theme, appearance });
+      fromApp({ type: APP_MESSAGE.ready, version: 1 });
+      await flush();
+      const token = posted[0]?.message as AppTokenMessage;
+      assert.equal(token.type, APP_MESSAGE.token);
+      assert.equal(token.context.theme, theme, `${preset}/${theme}`);
+      // The host's appearance replaces the minted one (dark, in `setup`).
+      assert.deepEqual(
+        token.context.appearance,
+        appearance,
+        `${preset}/${theme}`
+      );
+    }
+  });
+
+  it("posts a theme message when the preset or mode changes", async () => {
+    const { host, posted, fromApp } = setup({
+      appearance: emulatorAppearance("planeward", "light"),
+    });
+    fromApp({ type: APP_MESSAGE.ready, version: 1 });
+    await flush();
+
+    const steps = [
+      { preset: "brand", theme: "light", posts: true },
+      { preset: "brand", theme: "light", posts: false },
+      { preset: "brand", theme: "dark", posts: true },
+      { preset: "planeward", theme: "dark", posts: true },
+    ] as const;
+    for (const { preset, theme, posts } of steps) {
+      const before = posted.length;
+      const appearance = emulatorAppearance(preset, theme);
+      host.setTheme(theme, appearance);
+      if (!posts) {
+        assert.equal(posted.length, before, `${preset}/${theme} not re-sent`);
+        continue;
+      }
+      assert.deepEqual(
+        posted.at(-1)?.message,
+        { type: APP_MESSAGE.theme, theme, appearance },
+        `${preset}/${theme}`
+      );
+    }
+  });
+
+  it("drops appearance values the SDK would drop", () => {
+    const token = {
+      token: "t",
+      expiresAt: 1,
+      context: { view: "experience", channelId: null, theme: "light" },
+    } as const;
+    const cases: { appearance: AppAppearance; expected: unknown }[] = [
+      {
+        appearance: {
+          colors: { primary: "url(https://evil.test)", ring: "red" },
+          font: { family: "Nunito", stylesheets: ["https://evil.test/a.css"] },
+        },
+        expected: {
+          colors: { ring: "red" },
+          font: { family: "Nunito", stylesheets: [] },
+        },
+      },
+      { appearance: { colors: { primary: "a;b" } }, expected: undefined },
+    ];
+    for (const { appearance, expected } of cases) {
+      const message = appTokenMessage(null, token, "light", appearance);
+      assert.deepEqual(
+        (message as AppTokenMessage).context.appearance,
+        expected
+      );
+      const theme = appThemeMessage("light", appearance);
+      assert.deepEqual(
+        expected
+          ? { type: APP_MESSAGE.theme, theme: "light", appearance: expected }
+          : { type: APP_MESSAGE.theme, theme: "light" },
+        theme
+      );
+    }
   });
 
   it("reuses a fresh cached token instead of minting again", async () => {

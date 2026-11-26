@@ -1,6 +1,7 @@
 /** Typed client for the emulator's `/__emulator/*` routes (same origin as the UI). */
 import type { AppTheme, AppView } from "@planeward/sdk";
 
+import type { EmulatorAppearancePreset } from "../appearance";
 import {
   EMULATOR_ROUTES,
   emulatorPath,
@@ -17,6 +18,7 @@ import {
   type MintViewerToken,
   type MintViewerTokenResponse,
   type PermissionsDeclarationResponse,
+  type SetAppearanceRequest,
   type SetGrantsRequest,
   type SetViewerRequest,
   type WebhookDeliveryEntry,
@@ -91,6 +93,15 @@ export const emulatorApi = {
   async setTheme(theme: AppTheme): Promise<EmulatorState> {
     return (
       await call<EmulatorStateResponse>("PUT", EMULATOR_ROUTES.theme, { theme })
+    ).data;
+  },
+  async setAppearance(
+    appearance: EmulatorAppearancePreset
+  ): Promise<EmulatorState> {
+    return (
+      await call<EmulatorStateResponse>("PUT", EMULATOR_ROUTES.appearance, {
+        appearance,
+      } satisfies SetAppearanceRequest)
     ).data;
   },
   async mintToken(): Promise<MintViewerToken> {

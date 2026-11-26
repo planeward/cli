@@ -25,6 +25,7 @@ import type {
   PermissionGrants,
   PlanewardDevPlan,
 } from "../manifest";
+import type { EmulatorAppearancePreset } from "./appearance";
 import type { PermissionsDeclaration } from "./permissions";
 
 // Server --------------------------------------------------------------------
@@ -54,6 +55,8 @@ export const EMULATOR_ROUTES = {
   view: `${EMULATOR_BASE_PATH}/view`,
   /** PUT `SetThemeRequest` → `EmulatorStateResponse`. */
   theme: `${EMULATOR_BASE_PATH}/theme`,
+  /** PUT `SetAppearanceRequest` → `EmulatorStateResponse`. */
+  appearance: `${EMULATOR_BASE_PATH}/appearance`,
   /** POST `MintViewerTokenRequest` → `MintViewerTokenResponse`. */
   token: `${EMULATOR_BASE_PATH}/token`,
   /** GET `?after=<id>` → `ApiRequestLogResponse`. */
@@ -474,6 +477,8 @@ export type EmulatorState = {
   viewer: EmulatorViewer;
   view: AppView;
   theme: AppTheme;
+  /** The host look sent as `AppContext.appearance`, in `theme` mode. */
+  appearance: EmulatorAppearancePreset;
   /** Permission grants, as saved to planeward.json `dev.grants`. */
   grants: PermissionGrants;
   entities: EmulatorEntities;
@@ -489,6 +494,8 @@ export type SetViewerRequest = Omit<EmulatorViewer, "planId"> & {
 export type SetViewRequest = { view: AppView };
 
 export type SetThemeRequest = { theme: AppTheme };
+
+export type SetAppearanceRequest = { appearance: EmulatorAppearancePreset };
 
 export type SetGrantsRequest = PermissionGrants;
 

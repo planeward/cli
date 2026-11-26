@@ -19,6 +19,7 @@ import {
 } from "@planeward/sdk/server";
 
 import { APP_GRANTABLE_SCOPES, type PlanewardManifest } from "../../manifest";
+import { emulatorAppearance } from "../appearance";
 import {
   EMULATOR_INSTALLATION_ID,
   EMULATOR_ROUTES,
@@ -227,6 +228,7 @@ describe("emulator", () => {
       view: "experience",
       channelId: "channel_app",
       theme: "light",
+      appearance: emulatorAppearance("planeward", "light"),
     });
 
     // Another app id is rejected, like production.
@@ -254,6 +256,41 @@ describe("emulator", () => {
     assert.equal(dashboardClaims.role, "admin");
     assert.equal(dashboardClaims.channelId, null);
     await local("PUT", EMULATOR_ROUTES.view, { view: "experience" });
+  });
+
+  it("mints the selected appearance preset for the current theme", async () => {
+    const cases = [
+      { appearance: "brand", theme: "light" },
+      { appearance: "brand", theme: "dark" },
+      { appearance: "planeward", theme: "dark" },
+      { appearance: "planeward", theme: "light" },
+    ] as const;
+    for (const { appearance, theme } of cases) {
+      const saved = await local<EmulatorStateResponse>(
+        "PUT",
+        EMULATOR_ROUTES.appearance,
+        { appearance }
+      );
+      assert.equal(saved.body.data.appearance, appearance);
+      await local("PUT", EMULATOR_ROUTES.theme, { theme });
+      const { body } = await local<MintViewerTokenResponse>(
+        "POST",
+        EMULATOR_ROUTES.token,
+        {}
+      );
+      const expected = emulatorAppearance(appearance, theme);
+      assert.ok(expected, `${appearance}/${theme} survives the SDK parser`);
+      assert.deepEqual(
+        body.data.context.appearance,
+        expected,
+        `${appearance}/${theme}`
+      );
+    }
+
+    const rejected = await local("PUT", EMULATOR_ROUTES.appearance, {
+      appearance: "neon",
+    });
+    assert.equal(rejected.status, 400);
   });
 
   it("sends app.installed on a fresh state, signed like production", async () => {

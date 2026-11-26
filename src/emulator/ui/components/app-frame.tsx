@@ -1,4 +1,4 @@
-import type { AppTheme } from "@planeward/sdk";
+import type { AppAppearance, AppTheme } from "@planeward/sdk";
 import { PlugZapIcon, RefreshCwIcon, UnplugIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -45,6 +45,7 @@ export function AppFrame({
   src,
   title,
   theme,
+  appearance,
   frameKey,
   dev,
   fetchToken,
@@ -52,6 +53,8 @@ export function AppFrame({
   src: string;
   title: string;
   theme: AppTheme;
+  /** The selected appearance preset for `theme`; sent with the token and theme posts. */
+  appearance: AppAppearance | undefined;
   frameKey: string;
   dev: { command: string; url: string };
   fetchToken: () => Promise<AppViewerToken>;
@@ -60,6 +63,7 @@ export function AppFrame({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const hostRef = useRef<AppFrameHost | null>(null);
   const themeRef = useRef(theme);
+  const appearanceRef = useRef(appearance);
   const fetchTokenRef = useRef(fetchToken);
   const [attempt, setAttempt] = useState(0);
   const loadKey = `${src}#${frameKey}#${attempt}`;
@@ -80,6 +84,7 @@ export function AppFrame({
 
   useEffect(() => {
     themeRef.current = theme;
+    appearanceRef.current = appearance;
     fetchTokenRef.current = fetchToken;
   });
 
@@ -143,6 +148,7 @@ export function AppFrame({
       src,
       getTarget: () => iframeRef.current?.contentWindow ?? null,
       theme: themeRef.current,
+      appearance: appearanceRef.current,
       fetchToken: () => fetchTokenRef.current(),
       onReady: () =>
         update((current) => (current === "unavailable" ? current : "ready")),
@@ -166,8 +172,8 @@ export function AppFrame({
   }, [mounted, loadKey, src]);
 
   useEffect(() => {
-    hostRef.current?.setTheme(theme);
-  }, [theme, status]);
+    hostRef.current?.setTheme(theme, appearance);
+  }, [theme, appearance, status]);
 
   useEffect(() => {
     if (status !== "loading" && status !== "loaded") {

@@ -19,8 +19,14 @@ import {
   type RefObject,
 } from "react";
 
+import {
+  EMULATOR_APPEARANCE_PRESETS,
+  emulatorAppearanceLabel,
+  isEmulatorAppearancePreset,
+  type EmulatorAppearancePreset,
+} from "../../appearance";
 import type { CommunityMemberStatus, FixtureMember } from "../../contract";
-import { Badge, Button, cn, Segmented } from "./ui";
+import { Badge, Button, cn, Segmented, Select } from "./ui";
 
 const STATUS_TONE: Record<
   CommunityMemberStatus,
@@ -46,11 +52,13 @@ export function TopBar({
   role,
   view,
   theme,
+  appearance,
   busy,
   panelOpen,
   onViewerChange,
   onRoleChange,
   onThemeChange,
+  onAppearanceChange,
   onReset,
   onTogglePanel,
 }: {
@@ -60,11 +68,13 @@ export function TopBar({
   role: AppViewerRole;
   view: AppView;
   theme: AppTheme;
+  appearance: EmulatorAppearancePreset;
   busy: boolean;
   panelOpen: boolean;
   onViewerChange: (memberId: string) => void;
   onRoleChange: (role: AppViewerRole) => void;
   onThemeChange: (theme: AppTheme) => void;
+  onAppearanceChange: (appearance: EmulatorAppearancePreset) => void;
   onReset: () => Promise<void>;
   onTogglePanel: () => void;
 }) {
@@ -109,6 +119,22 @@ export function TopBar({
             Dashboard always opens as admin
           </span>
         ) : null}
+        <Select
+          aria-label="Host appearance"
+          title="Colours, radius and font sent to the app"
+          className="w-auto"
+          value={appearance}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (isEmulatorAppearancePreset(next)) {
+              onAppearanceChange(next);
+            }
+          }}
+          options={EMULATOR_APPEARANCE_PRESETS.map((preset) => ({
+            value: preset,
+            label: emulatorAppearanceLabel(preset),
+          }))}
+        />
         <Button
           variant="ghost"
           size="icon"

@@ -3,6 +3,11 @@ import { join } from "node:path";
 import type { AppTheme, AppView } from "@planeward/sdk";
 
 import type { PermissionGrants } from "../../manifest";
+import {
+  DEFAULT_EMULATOR_APPEARANCE_PRESET,
+  isEmulatorAppearancePreset,
+  type EmulatorAppearancePreset,
+} from "../appearance";
 import type {
   EmulatorApp,
   EmulatorEntities,
@@ -28,6 +33,8 @@ type PersistedState = {
   viewer: EmulatorViewer;
   view: AppView;
   theme: AppTheme;
+  /** Missing from a `state.json` saved before appearances; read as the default. */
+  appearance?: EmulatorAppearancePreset;
   entities: EmulatorEntities;
 };
 
@@ -178,6 +185,17 @@ export class EmulatorStore {
     this.#state.theme = theme;
   }
 
+  get appearance(): EmulatorAppearancePreset {
+    const { appearance } = this.#state;
+    return isEmulatorAppearancePreset(appearance)
+      ? appearance
+      : DEFAULT_EMULATOR_APPEARANCE_PRESET;
+  }
+
+  set appearance(appearance: EmulatorAppearancePreset) {
+    this.#state.appearance = appearance;
+  }
+
   now(): Date {
     return this.#now();
   }
@@ -198,6 +216,7 @@ export class EmulatorStore {
       viewer: this.#state.viewer,
       view: this.#state.view,
       theme: this.#state.theme,
+      appearance: this.appearance,
       grants: this.#grants,
       entities: this.#state.entities,
     };
@@ -289,6 +308,7 @@ function seedState(app: EmulatorApp, now: Date): PersistedState {
     viewer: { memberId: viewer.id, role: "member", planId: null },
     view: "experience",
     theme: "light",
+    appearance: DEFAULT_EMULATOR_APPEARANCE_PRESET,
     entities,
   };
 }

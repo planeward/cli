@@ -7,6 +7,11 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { validateGrants } from "../../commands/manifest-file";
 import type { PermissionGrants } from "../../manifest";
 import {
+  EMULATOR_APPEARANCE_PRESETS,
+  emulatorAppearance,
+  isEmulatorAppearancePreset,
+} from "../appearance";
+import {
   EMULATOR_BASE_PATH,
   EMULATOR_ROUTES,
   EMULATOR_WEBHOOK_EVENTS,
@@ -192,6 +197,21 @@ export function createEmulatorRoutes(deps: EmulatorRouteDeps): Hono {
     return state(c);
   });
 
+  app.put(EMULATOR_ROUTES.appearance, async (c) => {
+    const { appearance } = (await readJsonBody(c)) as {
+      appearance?: unknown;
+    };
+    if (!isEmulatorAppearancePreset(appearance)) {
+      throw new ApiError(
+        `appearance must be one of ${EMULATOR_APPEARANCE_PRESETS.map((id) => `"${id}"`).join(", ")}.`,
+        400
+      );
+    }
+    store.appearance = appearance;
+    store.changed();
+    return state(c);
+  });
+
   app.post(EMULATOR_ROUTES.token, async (c) => {
     const member = domain.member(store.viewer.memberId);
     if (!member) throw new ApiError("Viewer not found.", 404);
@@ -227,6 +247,7 @@ export function createEmulatorRoutes(deps: EmulatorRouteDeps): Hono {
       nowMs: store.now().getTime(),
     });
     const { token, expiresAt } = await signViewerToken(keys, claims);
+    const appearance = emulatorAppearance(store.appearance, store.theme);
     return c.json({
       data: {
         token,
@@ -236,6 +257,7 @@ export function createEmulatorRoutes(deps: EmulatorRouteDeps): Hono {
           view: store.view,
           channelId: claims.channelId,
           theme: store.theme,
+          ...(appearance ? { appearance } : {}),
         },
       },
     } satisfies MintViewerTokenResponse);
